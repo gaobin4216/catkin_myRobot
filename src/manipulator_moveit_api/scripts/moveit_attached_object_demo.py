@@ -50,7 +50,7 @@ class MoveAttachedObjectDemo:
         
         # 设置table和tool的三维尺寸
         table_size = [0.1, 0.7, 0.01]
-        tool_size = [0.15, 0.02, 0.02]
+        tool_size = [0.3, 0.02, 0.02]
         
         # 设置tool的位姿
         p = PoseStamped()
@@ -82,9 +82,10 @@ class MoveAttachedObjectDemo:
         arm.set_start_state_to_current_state()
 
         # 设置机械臂的目标位置，使用六轴的位置数据进行描述（单位：弧度）
-        joint_positions = [0.827228546495185, 0.29496592875743577, 1.1185644936946095, 0,-0.7987583317769674, -0.18950024740190782, 0.11752152218233858]
-        arm.set_joint_value_target(joint_positions)
-                 
+        #joint_positions = [0.827228546495185, 0.29496592875743577, 1.1185644936946095, 0,-0.7987583317769674, -0.18950024740190782, 0.11752152218233858]
+        #arm.set_joint_value_target(joint_positions)           
+        arm.set_named_target('up')       
+
         # 控制机械臂完成运动
         arm.go()
         rospy.sleep(1)
