@@ -1,0 +1,51 @@
+<launch>
+  <!-- 启动gazebo -->
+  <!-- Gazebo options -->
+  <arg name="gazebo_gui" default="true" doc="Start Gazebo GUI"/>
+  <arg name="paused" default="false" doc="Start Gazebo paused"/>
+  <arg name="world_name" default="worlds/empty.world" doc="Gazebo world file"/>
+  <arg name="world_pose" default="-x 0 -y 0 -z 0 -R 0 -P 0 -Y 0" doc="Pose to spawn the robot at"/>
+  <arg name="initial_joint_positions" default=" -J joint1 0 -J joint2 0 -J joint3 0 -J joint4 0 -J joint5 0 -J joint6 0 -J joint7 0" doc="Initial joint configuration of the robot"/>
+  <!-- Start Gazebo paused to allow the controllers to pickup the initial pose -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch" pass_all_args="true">
+    <arg name="paused" value="true"/>
+  </include>
+  <!-- Set the robot urdf on the parameter server -->
+  <param name="robot_description" textfile="$(find manipulator)/urdf/manipulator.urdf" />
+  <!-- Unpause the simulation after loading the robot model -->
+  <arg name="unpause" value="$(eval '' if arg('paused') else '-unpause')" />
+  <!-- Spawn the robot in Gazebo -->
+  <node name="spawn_gazebo_model" pkg="gazebo_ros" type="spawn_model" args="-urdf -param robot_description -model robot $(arg unpause) $(arg world_pose) $(arg initial_joint_positions)"  respawn="false" output="screen" />
+
+  <!-- 配置控制器接口 -->
+  <rosparam file="$(find manipulator_moveit_config)/config/myRobot_controllers.yaml" command="load"/> 
+  <!-- Joint Trajectory Controller -->   
+  <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false"  output="screen" args="manipulator_controller"/>
+  <!-- joint state controller -->  
+  <node name="gazebo_controller_spawner" pkg="controller_manager" type="spawner" respawn="false" output="screen" args="joint_state_controller" />
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" respawn="true" output="screen" />
+  <!-- Follow Joint Trajectory -->
+  <param name="moveit_controller_manager" value="moveit_simple_controller_manager/MoveItSimpleControllerManager" />
+   
+  <!--启动MoveIt的运动规划与可视化模块,包含move_group节点（负责运动规划、轨迹执行）和RViz可视化界面-->
+   <!-- specify the planning pipeline -->
+  <arg name="pipeline" default="ompl" />
+  <!-- By default, we will load or override the robot_description -->
+  <arg name="load_robot_description" default="true"/>
+  <!-- 指定控制器管理器类型，支持fake（仿真模式）、simple（基础控制）、ros_control集成ROS Control框架-->
+  <arg name="moveit_controller_manager" default="ros_control" />
+  <!-- move_group节点启动-->
+  <include file="$(dirname)/move_group.launch">  
+    <arg name="allow_trajectory_execution" value="true"/>  <!--允许执行规划轨迹，需控制器已正确映射关节-->
+    <arg name="moveit_controller_manager" value="$(arg moveit_controller_manager)" /> <!--指定控制器管理器类型-->
+    <arg name="info" value="true"/> <!--输出调试信息-->
+    <arg name="pipeline" value="$(arg pipeline)"/>  <!--指定规划管线-->
+    <arg name="load_robot_description" value="$(arg load_robot_description)"/>  <!--加载或覆盖机器人描述-->
+  </include>
+
+  <!--RViz可视化配置-->
+  <!-- Run Rviz and load the default config to see the state of the move_group node -->
+  <include file="$(dirname)/moveit_rviz.launch">
+    <arg name="rviz_config" value="$(dirname)/moveit.rviz"/>
+  </include>
+</launch>
