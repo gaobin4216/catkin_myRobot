@@ -1,0 +1,8 @@
+prefix=/home/gaobin/GaoBin_Study/catkin_myRobot/devel
+
+Name: manipulator_moveit_api
+Description: Description of manipulator_moveit_api
+Version: 0.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 

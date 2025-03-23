@@ -1,0 +1,8 @@
+prefix=/home/gaobin/GaoBin_Study/catkin_myRobot/devel
+
+Name: manipulator
+Description: Description of manipulator
+Version: 1.0.0
+Cflags: 
+Libs: -L${prefix}/lib 
+Requires: 
