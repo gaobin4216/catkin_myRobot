@@ -7,9 +7,9 @@
 int main(int argc, char **argv)
 {
 	ros::init(argc, argv, "moveit_cartesian_demo");
-	ros::AsyncSpinner spinner(1);
+	ros::AsyncSpinner spinner(1);//开启一个线程，处理回调函数
 	spinner.start();
-
+    
     moveit::planning_interface::MoveGroupInterface arm("manipulator");
 
     //获取终端link的名称
@@ -47,31 +47,18 @@ int main(int argc, char **argv)
     target_pose.orientation.w = -0.494393;
     arm.setPoseTarget(target_pose);
     arm.move();
-    /*
-    geometry_msgs::Pose target_pose;
-    target_pose.orientation.x = -0.482974;
-    target_pose.orientation.y = 0.517043;
-    target_pose.orientation.z = -0.504953;
-    target_pose.orientation.w = -0.494393;
+    ros::Duration(1.0).sleep();  
 
-    target_pose.position.x = 0.331958;
-    target_pose.position.y = 0.0;
-    target_pose.position.z = 0.307887;
-
-    arm.setPoseTarget(target_pose);
-    arm.move();
-    */
-   //ros::Duration(60.0).sleep();
 	std::vector<geometry_msgs::Pose> waypoints;
 
     //将初始位姿加入路点列表
-	//waypoints.push_back(target_pose);
+	waypoints.push_back(target_pose);
 
     double centerA = target_pose.position.x;
     double centerB = target_pose.position.z;
     double radius = 0.075;
 
-    for(double th=0.0; th<6.28*10; th=th+0.01)
+    for(double th=0.0; th<6.28; th=th+0.01)
     {
         target_pose.position.x = centerA + radius * cos(th);
         target_pose.position.z = centerB + radius * sin(th);

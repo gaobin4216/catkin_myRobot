@@ -17,7 +17,7 @@
                 <mesh filename="package://manipulator/meshes/base_link.STL" />
             </geometry>
             <material name="">
-                <color rgba="1 1 1 1" />
+                <color rgba="0.79216 0.81961 0.93333 1" />
             </material>
         </visual>
         <collision>
@@ -45,7 +45,7 @@
                 <mesh filename="package://manipulator/meshes/link1.STL" />
             </geometry>
             <material name="">
-                <color rgba="1 1 1 1" />
+                <color rgba="0.79216 0.81961 0.93333 1" />
             </material>
         </visual>
         <collision>
@@ -74,7 +74,7 @@
                 <mesh filename="package://manipulator/meshes/link2.STL" />
             </geometry>
             <material name="">
-                <color rgba="1 1 1 1" />
+                <color rgba="0.79216 0.81961 0.93333 1" />
             </material>
         </visual>
         <collision>
@@ -103,7 +103,7 @@
                 <mesh filename="package://manipulator/meshes/link3.STL" />
             </geometry>
             <material name="">
-                <color rgba="1 1 1 1" />
+                <color rgba="0.79216 0.81961 0.93333 1" />
             </material>
         </visual>
         <collision>
@@ -132,7 +132,7 @@
                 <mesh filename="package://manipulator/meshes/link4.STL" />
             </geometry>
             <material name="">
-                <color rgba="1 1 1 1" />
+                <color rgba="0.79216 0.81961 0.93333 1" />
             </material>
         </visual>
         <collision>
@@ -161,7 +161,7 @@
                 <mesh filename="package://manipulator/meshes/link5.STL" />
             </geometry>
             <material name="">
-                <color rgba="1 1 1 1" />
+                <color rgba="0.79216 0.81961 0.93333 1" />
             </material>
         </visual>
         <collision>
@@ -190,7 +190,7 @@
                 <mesh filename="package://manipulator/meshes/link6.STL" />
             </geometry>
             <material name="">
-                <color rgba="1 1 1 1" />
+                <color rgba="0.79216 0.81961 0.93333 1" />
             </material>
         </visual>
         <collision>
@@ -219,7 +219,7 @@
                 <mesh filename="package://manipulator/meshes/link7.STL" />
             </geometry>
             <material name="">
-                <color rgba="1 1 1 1" />
+                <color rgba="0.79216 0.81961 0.93333 1" />
             </material>
         </visual>
         <collision>
@@ -248,7 +248,7 @@
                 <mesh filename="package://manipulator/meshes/tool.STL" />
             </geometry>
             <material name="">
-                <color rgba="0.79216 0.81961 0.93333 1" />
+                <color rgba="1 1 1 1" />
             </material>
         </visual>
         <collision>
