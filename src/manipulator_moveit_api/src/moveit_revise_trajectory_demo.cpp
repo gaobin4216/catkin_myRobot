@@ -2,7 +2,7 @@
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/robot_trajectory/robot_trajectory.h>
 
-//轨迹重定义
+//轨迹重定义。速度减慢，时间增加，加速度减小
 void scale_trajectory_speed(moveit::planning_interface::MoveGroupInterface::Plan &plan, double scale)
 {
     int n_joints = plan.trajectory_.joint_trajectory.joint_names.size();
@@ -38,7 +38,6 @@ int main(int argc, char **argv)
     arm.move();
     ros::Duration(1.0).sleep();
 
-
     double targetPose[7] = {0.391410, -0.676384, -0.376217, 0.0,0.0, 1.052834, 0.454125};
     std::vector<double> joint_group_positions(7);
     joint_group_positions[0] = targetPose[0];
@@ -58,7 +57,7 @@ int main(int argc, char **argv)
     arm.move();
     ros::Duration(1.0).sleep();
 
-
+    //可以自己规划一个轨迹，将其定义为plan的数据结构，验证自己的规划算法
     arm.setJointValueTarget(joint_group_positions);
     moveit::planning_interface::MoveGroupInterface::Plan plan;
     moveit::core::MoveItErrorCode success = arm.plan(plan);

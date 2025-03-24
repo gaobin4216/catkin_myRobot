@@ -144,6 +144,8 @@ target_link_libraries(moveit_circle_demo ${catkin_LIBRARIES})
 add_executable(moveit_revise_trajectory_demo src/moveit_revise_trajectory_demo.cpp)
 target_link_libraries(moveit_revise_trajectory_demo ${catkin_LIBRARIES})
 
+add_executable(moveit_continue_trajectory_demo src/moveit_continue_trajectory_demo.cpp)
+target_link_libraries(moveit_continue_trajectory_demo ${catkin_LIBRARIES})
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -188,6 +190,7 @@ catkin_install_python(PROGRAMS
 install(TARGETS 
   moveit_circle_demo 
   moveit_revise_trajectory_demo
+  moveit_continue_trajectory_demo
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_GLOBAL_BIN_DESTINATION}

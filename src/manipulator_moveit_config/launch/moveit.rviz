@@ -126,13 +126,13 @@ Visualization Manager:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-        Loop Animation: false
+        Loop Animation: true
         Robot Alpha: 0.5
         Robot Color: 150; 50; 150
         Show Robot Collision: false
         Show Robot Visual: true
         Show Trail: false
-        State Display Time: 0.05 s
+        State Display Time: 1x
         Trail Step Size: 1
         Trajectory Topic: move_group/display_planned_path
         Use Sim Time: false
@@ -242,7 +242,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 1.6809192895889282
+      Distance: 0.8529521226882935
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -250,17 +250,17 @@ Visualization Manager:
         Value: false
       Field of View: 0.75
       Focal Point:
-        X: 0.03929654136300087
-        Y: 0.24538952112197876
-        Z: 0.10753275454044342
+        X: 0.2160988599061966
+        Y: -0.18882860243320465
+        Z: 0.2719971239566803
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.23500025272369385
+      Pitch: 0.815000057220459
       Target Frame: base_link
-      Yaw: 5.32995080947876
+      Yaw: 4.374946117401123
     Saved: ~
 Window Geometry:
   Displays:
