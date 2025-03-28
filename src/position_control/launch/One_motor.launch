@@ -1,0 +1,18 @@
+<launch>
+    <!-- topic 转 CAN，负责将 "sent_messages"话题的消息发给can总线，ros负责发布"sent_messages"-->
+    <node pkg="socketcan_bridge" name="topic_to_socketcan_node" type="topic_to_socketcan_node" output="screen">
+        <param name="can_device" value="can0" />
+    </node>
+
+    <!-- CAN 转 topic -->
+    <node pkg="socketcan_bridge" name="socketcan_to_topic_node" type="socketcan_to_topic_node" output="screen">
+        <param name="can_device" value="can0" />
+    </node>
+ 
+    <node pkg="position_control" name="GetTrajectory" type="GetTrajectory" output="screen">
+    </node> 
+         
+    <node pkg="position_control" name="RunTrajectory" type="RunTrajectory" output="screen">
+    </node>  
+   
+</launch>
