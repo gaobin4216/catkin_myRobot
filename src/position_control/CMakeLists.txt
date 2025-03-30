@@ -128,15 +128,16 @@ include_directories(
 #   src/${PROJECT_NAME}/position_control.cpp
 # )
 
-
-add_executable(GetTrajectory src/GetTrajectory.cpp)
+add_executable(GetMoveitTrajectory src/GetMoveitTrajectory.cpp)
+add_executable(GetPreTrajectory src/GetPreTrajectory.cpp)
 add_executable(RunTrajectory src/RunTrajectory.cpp)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
 # add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-add_dependencies(GetTrajectory ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(GetMoveitTrajectory ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(GetPreTrajectory ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 add_dependencies(RunTrajectory ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
@@ -159,7 +160,12 @@ add_dependencies(RunTrajectory ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPO
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
-target_link_libraries(GetTrajectory
+target_link_libraries(GetMoveitTrajectory
+    ${catkin_LIBRARIES}
+    rt
+    pthread
+)
+target_link_libraries(GetPreTrajectory
     ${catkin_LIBRARIES}
     rt
     pthread

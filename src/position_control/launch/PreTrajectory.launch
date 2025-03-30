@@ -9,7 +9,7 @@
         <param name="can_device" value="can0" />
     </node>
  
-    <node pkg="position_control" name="GetTrajectory" type="GetTrajectory" output="screen">
+    <node pkg="position_control" name="GetPreTrajectory" type="GetPreTrajectory" output="screen">
     </node> 
          
     <node pkg="position_control" name="RunTrajectory" type="RunTrajectory" output="screen">

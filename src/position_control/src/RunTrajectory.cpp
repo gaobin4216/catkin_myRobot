@@ -243,7 +243,7 @@ int main(int argc, char *argv[])
 
     // 创建发布者和订阅者
     //发送控制指令（如电机速度、位置指令）到 CAN 总线设备
-    ros::Publisher pub10 = nh.advertise<can_msgs::Frame>("sent_messages", 100);//发送 can_msgs::Frame 类型的消息到话题 "sent_messages"，队列长度为 100
+    ros::Publisher pub = nh.advertise<can_msgs::Frame>("sent_messages", 100);//发送 can_msgs::Frame 类型的消息到话题 "sent_messages"，队列长度为 100
     
     //用于接收 CAN 总线设备的反馈数据（如编码器位置、电机状态），并通过 feedbackCallback 更新控制逻辑
     ros::Subscriber sub = nh.subscribe("received_messages", 100,  &position::PositionControl::feedbackCallback, &positionControl);
@@ -261,11 +261,11 @@ int main(int argc, char *argv[])
     can_frame_msg10.data = boost::array<uint8_t, 8>{0x40, 0x64, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00};
 
     // 设置发布频率
-    ros::Rate loop_rate(1000); 
+    ros::Rate loop_rate(10); // 10 Hz
 
     while (ros::ok())
     {
-        pub10.publish(can_frame_msg10);
+        pub.publish(can_frame_msg10);
         loop_rate.sleep();
         ros::spinOnce();  // 处理订阅的消息
     }

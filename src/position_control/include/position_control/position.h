@@ -9,6 +9,9 @@
 #include <vector>
 #include <std_msgs/Float64.h>
 #include <boost/array.hpp>
+#include <std_msgs/Float64.h>
+#include <trajectory_msgs/JointTrajectory.h>
+#include <moveit_msgs/ExecuteTrajectoryActionGoal.h>
 #include <boost/interprocess/managed_shared_memory.hpp>
 #include <boost/interprocess/allocators/allocator.hpp>
 #include <boost/interprocess/shared_memory_object.hpp>
@@ -29,8 +32,8 @@ namespace position
         public:
             PositionControl(ros::NodeHandle& nh) ;//构造函数
             void writePulsesPositionsToSharedMemory(bip::managed_shared_memory& segment, const std::vector<std::vector<int32_t>>& pulses_positions);//写入共享内存
-            //void trajectoryCallback(const moveit_msgs::ExecuteTrajectoryActionGoal::ConstPtr& msg);
-            void trajectoryCallback();
+            void trajectoryCallback(const moveit_msgs::ExecuteTrajectoryActionGoal::ConstPtr& msg);//接受moveit轨迹
+            void trajectoryCallback();//接受预设轨迹
             void readPulsesPositionsFromSharedMemory();
             void feedbackCallback(const can_msgs::Frame::ConstPtr& msg);
             void setSharedMemorySegment(bip::managed_shared_memory* segment);

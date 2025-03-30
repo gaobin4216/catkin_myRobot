@@ -113,7 +113,7 @@ namespace position//命名空间，申明作用域
 int main(int argc, char *argv[]) 
 {
     // 初始化ROS节点
-    ros::init(argc, argv, "GetTrajectory");
+    ros::init(argc, argv, "GetPreTrajectory");
     // 创建节点句柄
     ros::NodeHandle nh;
 
