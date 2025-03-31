@@ -2,7 +2,7 @@
 #include <position_control/position.h>
 
 std::array<int, 7> current_pulse; // 当前脉冲数
-
+std::array<int, 7> pulse_diff;
 //用来把pulsesPositions数组里存储的各轨迹点的位置信息依次发送给电机，
 //该cpp文件也读取了当前电机位置信息，用来判断何时发送下一个轨迹点数据，但在实际控制中是不用这样的
 namespace position
@@ -323,15 +323,16 @@ namespace position
         can_msgs::Frame can_frame_msg8;
         can_frame_msg8.dlc = CAN_DLC;
         can_frame_msg8.data= boost::array<uint8_t, 8>{0x23, 0x7A, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00};
-
-        for (int joint_id = 0; joint_id < 7; ++joint_id) 
+        // 打印发送的数据
+        
+        for (int joint_id = 0; joint_id < 3; joint_id++) 
         {
             // 提取每个轨迹点的脉冲数并转换为两位十六进制数，65535为0xFFFF
             int32_t pulse = pulses_positions[currentPointIndex][joint_id];
             int32_t byte3, byte2, byte1, byte0;
             intToFourBytes(pulse, byte3, byte2, byte1, byte0);
             // 设置不同关节的CAN ID（如0x600+关节ID）
-            can_frame_msg8.id = CAN_ID_BASE + joint_id; 
+            can_frame_msg8.id = CAN_ID_BASE + joint_id+1; 
             // 填充到一维数组的后四位
             can_frame_msg8.data[4] = byte3;
             can_frame_msg8.data[5] = byte2;
@@ -341,14 +342,11 @@ namespace position
             ros::Duration(0.25).sleep();
             pub_.publish(can_frame_msg8);
             ros::Duration(0.25).sleep();
-        }
-
-        // 打印发送的数据
-        ROS_INFO("Sending CAN Frame Data for Point %zu:", currentPointIndex);
-        for (const auto& byte : can_frame_msg8.data) {
-            ROS_INFO("  0x%02X", byte);
-        }
-        
+            ROS_INFO("Sending CAN Frame Data for Point %zu:", currentPointIndex);
+            for (const auto& byte : can_frame_msg8.data) {
+                ROS_INFO("  0x%02X", byte);
+            }
+        }       
         jointstart2();
     }
     //对于轮廓位置模式，这个设置是必要的，然而对于轮廓速度模式则不需要,设置控制指令，由于控制命令为上升沿触发，要将控制字的bit4切换为off再切到on，伺服才会再次运动
@@ -379,26 +377,27 @@ namespace position
         can_frame_msg11.id =  CAN_ID_BASE+0x07;
         pub_.publish(can_frame_msg11);
         ros::Duration(0.25).sleep();//确保信息有时间发送
+        ROS_INFO("jointstart2");
     };
 
     //接受反馈数据，判断是否更新位置点
     void PositionControl::feedbackCallback(const can_msgs::Frame::ConstPtr& msg)    
-    {
-        std::array<int, 7> pulse_diff;
-        pulse_diff.fill(std::numeric_limits<int>::max());        
+    {                
         std::vector<int32_t> target_pulse= pulsesPositions[currentPointIndex];
-        if (msg->id >= FEEDBACK_ID_BASE && msg->id <= FEEDBACK_ID_BASE+6 && msg->data[1]== 0x64 && msg->data[2]== 0x60)
+        if (msg->id >= FEEDBACK_ID_BASE+1 && msg->id <= FEEDBACK_ID_BASE+7 && msg->data[1]== 0x64 && msg->data[2]== 0x60)
         {
-            int joint_id = msg->id - FEEDBACK_ID_BASE; // 计算关节CAN_ID
+            int joint_id = msg->id - FEEDBACK_ID_BASE-1; // 计算关节CAN_ID
             current_pulse[joint_id] = (msg->data[7] << 24) | (msg->data[6] << 16) | (msg->data[5] << 8) | msg->data[4];//解析反馈信息，反馈信息表示当前脉冲数
-            for(int i=0;i<7;i++)
+            for(int i=0;i<3;i++)
             {
                 pulse_diff[i]=std::abs(current_pulse[i] - target_pulse[i]);
+                ROS_INFO("Joint %d: Current Pulse: %d, Target Pulse: %d, Pulse Diff: %d", i, current_pulse[i], target_pulse[i], pulse_diff[i]);
             }
-            int max_abs_value = *std::max_element(pulse_diff.begin(), pulse_diff.end());//计算脉冲数差值的最大绝对值
+            int max_abs_value = *std::max_element(pulse_diff.begin(), pulse_diff.end()-5);//计算脉冲数差值的最大绝对值
             if(max_abs_value<=500)
             {
                 current_pulse.fill(std::numeric_limits<int>::max()); //初始化当前脉冲数为最大值 
+                pulse_diff.fill(std::numeric_limits<int>::max());  
                 ROS_INFO("Motor has reached target position for point %zu.", currentPointIndex);
                 // 如果电机到达目标位置，发送下一个轨迹点
                 if (currentPointIndex +1 < pulsesPositions.size())
@@ -432,7 +431,8 @@ int main(int argc, char *argv[])
     //发送控制指令（如电机速度、位置指令）到 CAN 总线设备
     ros::Publisher pub = nh.advertise<can_msgs::Frame>("sent_messages", 100);//发送 can_msgs::Frame 类型的消息到话题 "sent_messages"，队列长度为 100
    
-    current_pulse.fill(std::numeric_limits<int>::max()); //初始化当前脉冲数为最大值 
+    current_pulse.fill(std::numeric_limits<int>::max()); //初始化当前脉冲数为最大值
+    pulse_diff.fill(std::numeric_limits<int>::max());   
 
     //用于接收 CAN 总线设备的反馈数据（如编码器位置、电机状态），并通过 feedbackCallback 更新控制逻辑
     ros::Subscriber sub = nh.subscribe("received_messages", 100,  &position::PositionControl::feedbackCallback, &positionControl);
@@ -444,17 +444,37 @@ int main(int argc, char *argv[])
     positionControl.SlaveEnable();
 
     // 创建 CAN 消息
-    can_msgs::Frame can_frame_msg10;
-    can_frame_msg10.id = CAN_ID_BASE+MY_ID;
+    can_msgs::Frame can_frame_msg10;    
     can_frame_msg10.dlc = CAN_DLC;
     can_frame_msg10.data = boost::array<uint8_t, 8>{0x40, 0x64, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00};
 
     // 设置发布频率
-    ros::Rate loop_rate(10); // 10 Hz
+    ros::Rate loop_rate(1000); 
 
     while (ros::ok())
     {
+        can_frame_msg10.id = CAN_ID_BASE+0x01;
         pub.publish(can_frame_msg10);
+        ros::Duration(0.25).sleep();//确保信息有时间发送
+        can_frame_msg10.id =  CAN_ID_BASE+0x02;
+        pub.publish(can_frame_msg10);
+        ros::Duration(0.25).sleep();//确保信息有时间发送
+        can_frame_msg10.id =  CAN_ID_BASE+0x03;
+        pub.publish(can_frame_msg10);
+        ros::Duration(0.25).sleep();//确保信息有时间发送
+        can_frame_msg10.id =  CAN_ID_BASE+0x04;
+        pub.publish(can_frame_msg10);
+        ros::Duration(0.25).sleep();//确保信息有时间发送
+        can_frame_msg10.id =  CAN_ID_BASE+0x05;
+        pub.publish(can_frame_msg10);
+        ros::Duration(0.25).sleep();//确保信息有时间发送
+        can_frame_msg10.id =  CAN_ID_BASE+0x06;
+        pub.publish(can_frame_msg10);
+        ros::Duration(0.25).sleep();//确保信息有时间发送
+        can_frame_msg10.id =  CAN_ID_BASE+0x07;
+        pub.publish(can_frame_msg10);
+        ros::Duration(0.25).sleep();//确保信息有时间发送
+
         loop_rate.sleep();
         ros::spinOnce();  // 处理订阅的消息
     }
