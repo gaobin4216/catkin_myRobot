@@ -12,7 +12,7 @@
     <node pkg="position_control" name="GetPreTrajectory" type="GetPreTrajectory" output="screen">
     </node> 
          
-    <node pkg="position_control" name="RunTrajectory" type="RunTrajectory" output="screen">
+    <node pkg="position_control" name="RunPreTrajectory" type="RunPreTrajectory" output="screen">
     </node>  
    
 </launch>

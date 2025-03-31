@@ -235,7 +235,7 @@ namespace position
 int main(int argc, char *argv[])
 {
     // 初始化ROS节点
-    ros::init(argc, argv, "RunTrajectory");
+    ros::init(argc, argv, "RunPreTrajectory");
     ros::NodeHandle nh;
 
     // 创建 PositionControl 对象

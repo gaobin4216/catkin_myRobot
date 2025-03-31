@@ -6,6 +6,8 @@
 #include <std_msgs/UInt16.h>
 #include <std_msgs/Int32.h>
 #include <string>
+#include <array>
+#include <limits>
 #include <vector>
 #include <std_msgs/Float64.h>
 #include <boost/array.hpp>
@@ -22,7 +24,8 @@ using namespace std;
 #define MY_ID 0x07
 #define CAN_DLC 8
 #define CAN_ID_BASE 0x600
-#define FEEDBACK_ID  1415
+#define FEEDBACK_ID 1415
+#define FEEDBACK_ID_BASE 0x580
 namespace bip = boost::interprocess;
 
 namespace position
@@ -37,7 +40,7 @@ namespace position
             void readPulsesPositionsFromSharedMemory();
             void feedbackCallback(const can_msgs::Frame::ConstPtr& msg);
             void setSharedMemorySegment(bip::managed_shared_memory* segment);
-    
+ 
             void SlaveEnable();
             void jointposition_mode();
             void jointenable1();
@@ -48,6 +51,8 @@ namespace position
             void velocityset();
             void jointstart1();
             void jointstart2();
+
+
             
         private:
             const int PULSES_PER_REVOLUTION = 65536; // 电机每转脉冲数/圈

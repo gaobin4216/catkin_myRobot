@@ -130,7 +130,8 @@ include_directories(
 
 add_executable(GetMoveitTrajectory src/GetMoveitTrajectory.cpp)
 add_executable(GetPreTrajectory src/GetPreTrajectory.cpp)
-add_executable(RunTrajectory src/RunTrajectory.cpp)
+add_executable(RunMoveitTrajectory src/RunMoveitTrajectory.cpp)
+add_executable(RunPreTrajectory src/RunPreTrajectory.cpp)
 
 ## Add cmake target dependencies of the library
 ## as an example, code may need to be generated before libraries
@@ -138,7 +139,8 @@ add_executable(RunTrajectory src/RunTrajectory.cpp)
 # add_dependencies(${PROJECT_NAME} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 add_dependencies(GetMoveitTrajectory ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 add_dependencies(GetPreTrajectory ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-add_dependencies(RunTrajectory ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(RunMoveitTrajectory ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(RunPreTrajectory ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
@@ -170,7 +172,12 @@ target_link_libraries(GetPreTrajectory
     rt
     pthread
 )
-target_link_libraries(RunTrajectory
+target_link_libraries(RunMoveitTrajectory
+    ${catkin_LIBRARIES}
+    rt
+    pthread
+)
+target_link_libraries(RunPreTrajectory
     ${catkin_LIBRARIES}
     rt
     pthread
