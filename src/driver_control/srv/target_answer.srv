@@ -1,0 +1,4 @@
+float64[7] delta_angles  # 目标关节角度（假设7个关节）
+---
+bool success              # 是否成功
+string message            # 附加信息
