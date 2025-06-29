@@ -1,40 +1,43 @@
 <launch>
 
-  <!-- 指定运动规划使用的算法库，默认采用 OMPL -->
+  <!-- specify the planning pipeline -->
   <arg name="pipeline" default="ompl" />
 
-  <!-- 配置是否启用 MoveIt 的规划数据库（MongoDB） -->
+  <!-- By default, we do not start a database (it can be large) -->
   <arg name="db" default="false" />
+  <!-- Allow user to specify database location -->
   <arg name="db_path" default="$(find manipulator_moveit_config)/default_warehouse_mongo_db" />
 
-  <!-- 调试模式开关。若设为 true，会输出更详细的调试日志，但可能影响性能 -->
+  <!-- By default, we are not in debug mode -->
   <arg name="debug" default="false" />
 
-  <!-- 决定是否加载机器人 URDF 模型。若为 true，会从 robot_description 参数加载 URDF 文件到ros参数服务器 -->
+  <!-- By default, we will load or override the robot_description -->
   <arg name="load_robot_description" default="true"/>
 
-  <!-- 使用 MoveIt 内置的虚拟控制器，不需要真实机器人。其他值（如 "ros_control"）：用于真实机器人控制。
-       fake_execution_type=interpolate：轨迹插值方式，使虚拟运动更平滑（其他选项如 via points 表示逐点执行） -->
+  <!-- Choose controller manager: fake, simple, or ros_control -->
   <arg name="moveit_controller_manager" default="fake" />
+  <!-- Set execution mode for fake execution controllers -->
   <arg name="fake_execution_type" default="interpolate" />
 
-  <!-- use_gui：是否启动 joint_state_publisher_gui，允许手动拖拽关节（仅适用于虚拟控制器）。
-       use_rviz：是否启动 RViz，用于可视化机器人模型和规划结果。 -->
+  <!-- By default, hide joint_state_publisher's GUI in 'fake' controller_manager mode -->
   <arg name="use_gui" default="false" />
   <arg name="use_rviz" default="true" />
 
-  <!-- 如果 moveit_controller_manager 被设置为 "fake"，则启动一组与 Fake Controller 相关的节点 -->
+  <!-- If needed, broadcast static tf for robot root -->
+
   <group if="$(eval arg('moveit_controller_manager') == 'fake')">
-    <!-- joint_state_publisher 节点：用于发布 关节状态，使得 MoveIt 可以获取并显示机器人当前的关节角度信息。
-         source_list：指定从 "move_group/fake_controller_joint_states" 获取关节状态。-->
+    <!-- We do not have a real robot connected, so publish fake joint states via a joint_state_publisher
+         MoveIt's fake controller's joint states are considered via the 'source_list' parameter -->
     <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" unless="$(arg use_gui)">
       <rosparam param="source_list">[move_group/fake_controller_joint_states]</rosparam>
     </node>
-    <!-- 若 use_gui=true，则使用 joint_state_publisher_gui，允许手动拖动关节-->
+    <!-- If desired, a GUI version is available allowing to move the simulated robot around manually
+         This corresponds to moving around the real robot without the use of MoveIt. -->
     <node name="joint_state_publisher" pkg="joint_state_publisher_gui" type="joint_state_publisher_gui" if="$(arg use_gui)">
       <rosparam param="source_list">[move_group/fake_controller_joint_states]</rosparam>
     </node>
-    <!-- robot_state_publisher：根据 URDF 文件计算各个关节的坐标变换（TF），并发布到 ROS TF 树 中 -->
+
+    <!-- Given the published joint states, publish tf for the robot links -->
     <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" respawn="true" output="screen" />
   </group>
 

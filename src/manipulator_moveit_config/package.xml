@@ -5,8 +5,8 @@
   <description>
      An automatically generated package with all the configuration and launch files for using the manipulator with the MoveIt Motion Planning Framework
   </description>
-  <author email="gaobin@gmail.com">gaobin</author>
-  <maintainer email="gaobin@gmail.com">gaobin</maintainer>
+  <author email="robot@robot.com">robot</author>
+  <maintainer email="robot@robot.com">robot</maintainer>
 
   <license>BSD</license>
 

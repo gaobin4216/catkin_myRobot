@@ -6,6 +6,6 @@ moveit_setup_assistant_config:
   SRDF:
     relative_path: config/manipulator.srdf
   CONFIG:
-    author_name: gaobin
-    author_email: gaobin@gmail.com
-    generated_timestamp: 1742368181
+    author_name: robot
+    author_email: robot@robot.com
+    generated_timestamp: 1751199210
