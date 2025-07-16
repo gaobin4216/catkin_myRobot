@@ -104,7 +104,7 @@ int main(int argc, char **argv)
         static const std::string PLANNING_GROUP = "manipulator"; // 修改为你的规划组名称
         moveit::planning_interface::MoveGroupInterface move_group(PLANNING_GROUP);
 
-        /*std::vector<double> joint_target = {0, 0, 0, 0, 0, 0, 0};
+        std::vector<double> joint_target = {0, 0, 0, 0, 0, 0, 0};
         for (int i = 0; i < UNITS; i++)
         {
             joint_target[i] = std::stod(argv[i + 1]) * M_PI / 180;
@@ -115,9 +115,9 @@ int main(int argc, char **argv)
         {
             ROS_INFO("joint_target %zu: %.4f rad", i, joint_target[i]);
         }
-        */
+        
 
-        geometry_msgs::Pose target_pose;
+        /*geometry_msgs::Pose target_pose;
         target_pose.position.x = std::stod(argv[1]) / 1000;
         target_pose.position.y = std::stod(argv[2]) / 1000;
         target_pose.position.z = std::stod(argv[3]) / 1000;
@@ -127,7 +127,7 @@ int main(int argc, char **argv)
         target_pose.orientation.w = std::stod(argv[7]);
         move_group.setGoalPositionTolerance(0.001);  // 位置容差(米)
         move_group.setGoalOrientationTolerance(0.1); // 角度容差(弧度)
-        move_group.setPoseTarget(target_pose);
+        move_group.setPoseTarget(target_pose);*/
 
         ros::AsyncSpinner spinner(1);
         spinner.start();

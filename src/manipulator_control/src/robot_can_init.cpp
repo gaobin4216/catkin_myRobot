@@ -1,3 +1,4 @@
+// 初始化CAN通信，设置PDO参数，可简单测试控制通信
 #include <cstdlib>
 #include "ros/ros.h"
 #include <iostream>
@@ -22,8 +23,8 @@ private:
     int sockfd;
     struct ifreq ifr;
     struct sockaddr_can addr;
-    int transmission_type = 1;
-    int InhibitTime = 1;
+    int transmission_type = 1; // 传输值，收到设定值个 SYNC 后才会触发 PDO
+    int InhibitTime = 1;       // 抑制禁止时间，即定义两个连续 PDO 传输的最小间隔时间，避免数据竞争总线的问题。单位 100us。
 
     /* 这两个辅助函数适用于对通信要求严格的SDO通信 */
     // 私有辅助函数：带重试机制的帧发送
@@ -172,7 +173,7 @@ public:
         memset(&frame, 0, sizeof(frame)); // 将结构体内存清零
 
         // 设备初始化之后，自动进入预操作状态
-        // 0x80，预操作状态，可以SDO，操作状态才可以PDO，以防万一，这里主动用NMT将电机置于预操作状态
+        // 0x80，预操作状态，可以SDO，操作状态才可以PDO，以防万一，这里主动用NMT将电机置于预操作状态,NMT广播
         uint8_t data[] = {0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}; // NMT 管理，0x000
         if (!sendFrameWithRetry(0x000, data, sizeof(data)))
         {
@@ -244,6 +245,7 @@ public:
         }
     }
 
+    /*PDO相关函数*/
     // ​​同步传输​​：等待 SYNC 信号后才发送/执行（同步驱动）。
     /*在复杂系统中（如多关节机器人），多个设备需要 ​​严格同步​​ 执行指令。
     ​​示例​​：
@@ -261,57 +263,250 @@ public:
         write(sockfd, &frame, sizeof(frame));
     }
 
-    void speak_position_with_retry(int node_id, int target_position)
-    {
-        int32_t initial_positon = listen_position_SDO(node_id);
-        int32_t current_position = 0;
-        int attempt = 0;
-
-        while (true)
-        {
-            current_position = listen_position_SDO(0x607);
-            if (abs(current_position - target_position) < 20)
-            {
-                std::cout << "已到达目标位置，当前位置: " << current_position << std::endl;
-                break;
-            }
-
-            position_move_model(0x607, target_position);
-            std::cout << "第" << (attempt + 1) << "次发送位置指令成功" << std::endl;
-            usleep(100000); // 等待10ms电机移动
-
-            if (listen_position_SDO(0x607) == initial_positon)
-            {
-                std::cout << "位置未更新,尝试第" << (attempt + 1) << "次失败" << std::endl;
-                attempt++;
-            }
-            else
-            {
-                std::cout << "位置更新,尝试第" << (attempt + 1) << "次成功" << std::endl;
-                break;
-            }
-        }
-    }
-
-    void position_move_model(int node_id, int position)
+    // 删除指定节点的PDO映射配置，每个驱动器pdo有四个通道，0.1.2.3
+    void del_pdo(uint8_t node_id, uint8_t pdo_id)
     {
         struct can_frame frame;
-        uint32_t sdoRequestId = node_id;          // SDO请求ID（根据实际协议可能需要调整）
-        uint32_t sdoResponseId = node_id - 0x080; // SDO响应ID（假设标准从站响应ID为0x580+节点ID）
+        memset(&frame, 0, sizeof(frame));
+        uint32_t sdoRequestId = 0x600 + node_id;
+        uint32_t sdoResponseId = 0x580 + node_id;
+        uint8_t channel_id = pdo_id - 1;
 
-        // 控制字设置（示例，其他指令类似添加错误处理）
-        uint8_t data4[] = {0x2B, 0x40, 0x60, 0x00, 0x80, 0x00, 0x00, 0x00};
-        if (!sendFrameWithRetry(sdoRequestId, data4, sizeof(data4)))
+        // 清除RPDO映射参数，0x1600，00，01，02，03
+        uint8_t data7[] = {0x2F, channel_id, 0x16, 0x00, 0x00, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(sdoRequestId, data7, sizeof(data7)))
         {
-            throw std::runtime_error("控制字设置1发送失败");
+            throw std::runtime_error("指令发送失败");
         }
         if (!receiveFrame(frame) || !validateResponseFrame(frame, sdoResponseId))
         {
-            throw std::runtime_error("控制字设置1未收到有效响应");
+            throw std::runtime_error("未收到有效响应");
+        }
+        // 清除TPDO映射参数，0x1A00，00，01，02，03
+        uint8_t data8[] = {0x2F, channel_id, 0x1A, 0x00, 0x00, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(sdoRequestId, data8, sizeof(data8)))
+        {
+            throw std::runtime_error("指令发送失败");
+        }
+        if (!receiveFrame(frame) || !validateResponseFrame(frame, sdoResponseId))
+        {
+            throw std::runtime_error("未收到有效响应");
+        }
+    }
+
+    // 使用NMT复位所有节点到初始状态（例如设备上电时的默认状态），然后节点自动进入预操作状态，nmt是广播无回馈。
+    void prepare_pdo()
+    {
+        uint8_t data6[] = {0x81, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(0x000, data6, sizeof(data6)))
+        {
+            throw std::runtime_error("PDO复位节点失败");
+        }
+    }
+
+    // 开始远程节点，进入操作状态，nmt是广播无回馈。
+    void pdo_set_up()
+    {
+        uint8_t data5[] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(0x000, data5, sizeof(data5)))
+        {
+            throw std::runtime_error("PDO远程节点开启失败");
+        }
+    }
+
+    // TPDO配置，电机端
+    void make_tpdo_bridge(uint8_t node_id, uint8_t tpdo_id, const std::vector<int> &orders)
+    {
+        struct can_frame frame;
+        memset(&frame, 0, sizeof(frame));
+        uint8_t byte3, byte2, byte1, byte0;
+        uint32_t sdoRequestId = 0x600 + node_id;
+        uint32_t sdoResponseId = 0x580 + node_id;
+
+        int cob_id = 16 * 16 * tpdo_id + 8 * 16 + node_id; // tpdo通道1，0x180+node_id，通道2，0x280+node_id，....
+        uint8_t channel_id = tpdo_id - 1;                  // 0x1800,tpdo1通道配置，0x1801,tpdo2通道配置
+
+        /*通信参数*/
+        // 去使能TPDO，COB-ID的​​最高位（Bit 31）​​用于控制TPDO的使能状态：​0​​：TPDO启用（默认状态）。​​1​​：TPDO禁用。0x80000000
+        intToFourBytes(cob_id, byte3, byte2, byte1, byte0);
+        uint8_t data1[] = {0x23, channel_id, 0x18, 0x01, byte3, byte2, 0x00, 0x80};
+        if (!sendFrameWithRetry(sdoRequestId, data1, sizeof(data1)))
+        {
+            throw std::runtime_error("CAN信号发送失败");
         }
 
-        // （中间指令类似添加错误处理...）
+        // 设置TPDO的传输类型，表示PDO在接收到对应数量的​​SYNC同步帧​​后触发发送，这里设置为1
+        intToFourBytes(transmission_type, byte3, byte2, byte1, byte0);
+        uint8_t data2[] = {0x2F, channel_id, 0x18, 0x02, byte3, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(sdoRequestId, data2, sizeof(data2)))
+        {
+            throw std::runtime_error("CAN信号发送失败");
+        }
 
+        // 设置抑制禁止时间，（最小发送间隔），这里设置为1，单位100us
+        intToFourBytes(InhibitTime, byte3, byte2, byte1, byte0);
+        uint8_t data6[] = {0x2B, channel_id, 0x18, 0x03, byte3, byte2, 0, 0x00};
+        if (!sendFrameWithRetry(sdoRequestId, data6, sizeof(data6)))
+        {
+            throw std::runtime_error("CAN信号发送失败");
+        }
+
+        /*映射参数*/
+        // 清除原有映射
+        uint8_t data7[] = {0x2F, channel_id, 0x1A, 0x00, 0x00, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(sdoRequestId, data7, sizeof(data7)))
+        {
+            throw std::runtime_error("CAN信号发送失败");
+        }
+
+        // 设置映射参数数量
+        uint8_t data9[] = {0x2F, channel_id, 0x1A, 0x00, sizeof(orders), 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(sdoRequestId, data9, sizeof(data9)))
+        {
+            throw std::runtime_error("CAN信号发送失败");
+        }
+
+        // 动态添加映射参数
+        uint8_t data3[] = {0x23, channel_id, 0x1A, 0x01, 0x00, 0x00, 0x00, 0x00};
+        for (int i = 0; i < orders.size(); i++)
+        {
+            intToFourBytes(orders[i], byte3, byte2, byte1, byte0);
+            data3[3] = i + 1;
+            data3[4] = byte3;
+            data3[5] = byte2;
+            data3[6] = byte1;
+            data3[7] = byte0;
+            if (!sendFrameWithRetry(sdoRequestId, data3, sizeof(data3)))
+            {
+                throw std::runtime_error("CAN信号发送失败");
+            }
+        }
+
+        // 重新启用TPDO（清除COB - ID最高位）
+        intToFourBytes(cob_id, byte3, byte2, byte1, byte0);
+        uint8_t data4[] = {0x23, channel_id, 0x18, 0x01, byte3, byte2, 0x00, 0x00};
+        if (!sendFrameWithRetry(sdoRequestId, data4, sizeof(data4)))
+        {
+            throw std::runtime_error("CAN信号发送失败");
+        }
+    }
+
+    // RPDO配置，上位机
+    void make_rpdo_bridge(uint8_t node_id, uint8_t tpdo_id, const std::vector<int> &orders)
+    {
+        struct can_frame frame;
+        memset(&frame, 0, sizeof(frame));
+        uint8_t byte3, byte2, byte1, byte0;
+        uint32_t sdoRequestId = 0x600 + node_id;
+        uint32_t sdoResponseId = 0x580 + node_id;
+
+        int cob_id = 16 * 16 * (tpdo_id + 1) + node_id; // rpdo通道1，0x200+node_id，通道2，0x300+node_id，....
+        uint8_t channel_id = tpdo_id - 1;               // 0x1400,tpdo1通道配置，0x1401,tpdo2通道配置
+
+        /*配置RPDO通信参数*/
+        // 禁止RPDO， COB-ID 的最高位（Bit 31）置 1，禁用 RPDO
+        intToFourBytes(cob_id, byte3, byte2, byte1, byte0);
+        uint8_t data1[] = {0x23, channel_id, 0x14, 0x01, byte3, byte2, 0x00, 0x80};
+        if (!sendFrameWithRetry(sdoRequestId, data1, sizeof(data1)))
+        {
+            throw std::runtime_error("CAN信号发送失败");
+        }
+
+        // 设置RPDO的传输类型
+        intToFourBytes(transmission_type, byte3, byte2, byte1, byte0);
+        uint8_t data2[] = {0x2F, channel_id, 0x14, 0x02, byte3, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(sdoRequestId, data2, sizeof(data2)))
+        {
+            throw std::runtime_error("CAN信号发送失败");
+        }
+
+        /*配置RPDO通信参数*/
+        // 清除原有映射
+        uint8_t data7[] = {0x2F, channel_id, 0x16, 0x00, 0x00, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(sdoRequestId, data7, sizeof(data7)))
+        {
+            throw std::runtime_error("CAN信号发送失败");
+        }
+        // 设置映射数量
+        uint8_t data9[] = {0x2F, channel_id, 0x16, 0x00, sizeof(orders), 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(sdoRequestId, data9, sizeof(data9)))
+        {
+            throw std::runtime_error("CAN信号发送失败");
+        }
+
+        // 动态添加新映射​
+        uint8_t data3[] = {0x23, channel_id, 0x16, 0x00 /*子索引*/, 0x00, 0x00, 0x00, 0x00};
+        for (int i = 0; i < orders.size(); i++)
+        {
+            intToFourBytes(orders[i], byte3, byte2, byte1, byte0);
+            data3[3] = i + 1;
+            data3[4] = byte3;
+            data3[5] = byte2;
+            data3[6] = byte1;
+            data3[7] = byte0;
+            if (!sendFrameWithRetry(sdoRequestId, data3, sizeof(data3)))
+            {
+                throw std::runtime_error("CAN信号发送失败");
+            }
+        }
+
+        // 重新启用RPDO（清除COB - ID最高位）
+        intToFourBytes(cob_id, byte3, byte2, byte1, byte0);
+        uint8_t data4[] = {0x23, channel_id, 0x14, 0x01, byte3, byte2, 0x00, 0x00};
+        if (!sendFrameWithRetry(sdoRequestId, data4, sizeof(data4)))
+        {
+            throw std::runtime_error("CAN信号发送失败");
+        }
+    }
+
+    // PDO控制电机运动到指定位置
+    void pdo_move(int pdoRequestId, uint32_t position)
+    {
+        // 下使能
+        uint8_t data[] = {0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(pdoRequestId, data, sizeof(data)))
+        {
+            throw std::runtime_error("下使能失败");
+        }
+
+        // 上使能
+        uint8_t data3[] = {0x00, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(pdoRequestId, data3, sizeof(data3)))
+        {
+            throw std::runtime_error("上使能失败");
+        }
+        // 命令触发
+        uint8_t byte3, byte2, byte1, byte0;
+        intToFourBytes(position, byte3, byte2, byte1, byte0);
+        uint8_t data4[] = {byte3, byte2, byte1, byte0, 0x1f, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(pdoRequestId, data4, sizeof(data4)))
+        {
+            throw std::runtime_error("目标位置发送失败");
+        }
+    }
+
+    /*SDO相关函数*/
+    // SDO位置控制模型，node_id为节点ID，position为目标位置，钛虎的sdo可以直接6040改变状态，不用0x000使用NMT开启节点
+    void position_move_model(int node_id, int position)
+    {
+        struct can_frame frame;
+        memset(&frame, 0, sizeof(frame));
+        uint32_t sdoRequestId = node_id;          // SDO请求ID（根据实际协议可能需要调整）
+        uint32_t sdoResponseId = node_id - 0x080; // SDO响应ID（假设标准从站响应ID为0x580+节点ID）
+
+        // 最好按照顺序
+        //  下使能
+        uint8_t data1[] = {0x2B, 0x40, 0x60, 0x00, 0x06, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(sdoRequestId, data1, sizeof(data1)))
+        {
+            throw std::runtime_error("启动指令发送失败");
+        }
+        // 上使能
+        uint8_t data2[] = {0x2B, 0x40, 0x60, 0x00, 0x0F, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(sdoRequestId, data2, sizeof(data2)))
+        {
+            throw std::runtime_error("启动指令发送失败");
+        }
         // 目标位置设置
         uint8_t byte3, byte2, byte1, byte0;
         intToFourBytes(position, byte3, byte2, byte1, byte0);
@@ -320,26 +515,21 @@ public:
         {
             throw std::runtime_error("目标位置设置发送失败");
         }
-        if (!receiveFrame(frame) || !validateResponseFrame(frame, sdoResponseId))
-        {
-            throw std::runtime_error("目标位置设置未收到有效响应");
-        }
 
-        // 启动指令
-        uint8_t data9[] = {0x2B, 0x40, 0x60, 0x00, 0x1F, 0x00, 0x00, 0x00};
-        if (!sendFrameWithRetry(sdoRequestId, data9, sizeof(data9)))
+        // 命令触发
+        uint8_t data3[] = {0x2B, 0x40, 0x60, 0x00, 0x1F, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(sdoRequestId, data3, sizeof(data3)))
         {
             throw std::runtime_error("启动指令发送失败");
         }
-        if (!receiveFrame(frame) || !validateResponseFrame(frame, sdoResponseId))
-        {
-            throw std::runtime_error("启动指令未收到有效响应");
-        }
     }
 
+    // 监听位置SDO，返回位置值
     int32_t listen_position_SDO(int node_id)
     {
         struct can_frame frame;
+        memset(&frame, 0, sizeof(frame));
+
         uint32_t sdoRequestId = node_id;
         uint32_t sdoResponseId = node_id - 0x080;
 
@@ -348,299 +538,29 @@ public:
         {
             throw std::runtime_error("位置读取请求发送失败");
         }
-        if (!receiveFrame(frame) || !validateResponseFrame(frame, sdoResponseId))
+        if (!receiveFrame(frame))
         {
-            throw std::runtime_error("位置读取未收到有效响应");
+            throw std::runtime_error("启动指令未收到有效响应");
         }
-
         return FourBytesToint(frame.data[4], frame.data[5], frame.data[6], frame.data[7]);
     }
 
-    void prepare_pdo(uint8_t node_id)
-    {
-        struct can_frame frame;
-        memset(&frame, 0, sizeof(frame));
-
-        // 远程节点关闭
-        uint8_t data5[] = {0x02, node_id, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-        if (!sendFrameWithRetry(0x000, data5, sizeof(data5)))
-        {
-            throw std::runtime_error("PDO远程节点关闭失败");
-        }
-
-        // 复位节点
-        uint8_t data6[] = {0x82, node_id, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-        if (!sendFrameWithRetry(0x000, data6, sizeof(data6)))
-        {
-            throw std::runtime_error("PDO复位节点失败");
-        }
-        receiveFrame(frame);
-    }
-
-    void make_tpdo_bridge(uint8_t node_id, uint8_t tpdo_id, const std::vector<int> &orders)
-    {
-        int cob_id = 16 * 16 * tpdo_id + 8 * 16 + node_id;
-        uint32_t sdoRequestId = 0x600 + node_id;
-        uint32_t sdoResponseId = 0x580 + node_id; // SDO请求ID（根据实际协议可能需要调整）
-        uint8_t byte3, byte2, byte1, byte0;
-        uint8_t channel_id = tpdo_id - 1;
-        struct can_frame frame;
-        memset(&frame, 0, sizeof(frame));
-
-        // 去使能TPDO1
-        intToFourBytes(cob_id, byte3, byte2, byte1, byte0);
-        uint8_t data1[] = {0x23, channel_id, 0x18, 0x01, byte3, byte2, 0x00, 0x80};
-        if (!sendFrameWithRetry(sdoRequestId, data1, sizeof(data1)))
-        {
-            throw std::runtime_error("目标位置设置发送失败");
-        }
-
-        // 设置TPDO1的传输类型
-        intToFourBytes(transmission_type, byte3, byte2, byte1, byte0);
-        uint8_t data2[] = {0x2F, channel_id, 0x18, 0x02, byte3, 0x00, 0x00, 0x00};
-        if (!sendFrameWithRetry(sdoRequestId, data2, sizeof(data2)))
-        {
-            throw std::runtime_error("目标位置设置发送失败");
-        }
-
-        intToFourBytes(InhibitTime, byte3, byte2, byte1, byte0);
-        uint8_t data6[] = {0x2B, channel_id, 0x18, 0x03, byte3, byte2, 0, 0x00};
-        if (!sendFrameWithRetry(sdoRequestId, data6, sizeof(data6)))
-        {
-            throw std::runtime_error("目标位置设置发送失败");
-        }
-        /*if(!receiveFrame(frame) || !validateResponseFrame(frame, sdoResponseId)) {
-            throw std::runtime_error("目标位置设置未收到有效响应");
-        }*/
-
-        // 清除原有映射
-        uint8_t data7[] = {0x2F, channel_id, 0x1A, 0x00, 0x00, 0x00, 0x00, 0x00};
-        if (!sendFrameWithRetry(sdoRequestId, data7, sizeof(data7)))
-        {
-            throw std::runtime_error("目标位置设置发送失败");
-        }
-
-        uint8_t data3[] = {0x23, channel_id, 0x1A, 0x01, 0, 0, 0, 0};
-        for (int i = 0; i < orders.size(); i++)
-        {
-            intToFourBytes(orders[i], byte3, byte2, byte1, byte0);
-            data3[3] = i + 1;
-            data3[4] = byte3;
-            data3[5] = byte2;
-            data3[6] = byte1;
-            data3[7] = byte0;
-            if (!sendFrameWithRetry(sdoRequestId, data3, sizeof(data3)))
-            {
-                throw std::runtime_error("目标位置设置发送失败");
-            }
-        }
-
-        /* set param 1
-        intToFourBytes(0x60410010, byte3, byte2, byte1, byte0);
-        uint8_t data3[] = {0x23, channel_id, 0x1A, 0x01, byte3, byte2, byte1, byte0};
-        if(!sendFrameWithRetry(sdoRequestId, data3, sizeof(data3))) {
-            throw std::runtime_error("目标位置设置发送失败");
-        }
-
-        //set param 2
-        intToFourBytes(0x60640020, byte3, byte2, byte1, byte0);
-        uint8_t data8[] = {0x23, channel_id, 0x1A, 0x02, byte3, byte2, byte1, byte0};
-        if(!sendFrameWithRetry(sdoRequestId, data8, sizeof(data8))) {
-            throw std::runtime_error("目标位置设置发送失败");
-        }*/
-
-        // set the num of param
-        uint8_t data9[] = {0x2F, channel_id, 0x1A, 0x00, 2, 0, 0, 0};
-        if (!sendFrameWithRetry(sdoRequestId, data9, sizeof(data9)))
-        {
-            throw std::runtime_error("目标位置设置发送失败");
-        }
-
-        intToFourBytes(cob_id, byte3, byte2, byte1, byte0);
-        uint8_t data4[] = {0x23, channel_id, 0x18, 0x01, byte3, byte2, 0x00, 0x00};
-        if (!sendFrameWithRetry(sdoRequestId, data4, sizeof(data4)))
-        {
-            throw std::runtime_error("目标位置设置发送失败");
-        }
-    }
-
-    void make_rpdo_bridge(uint8_t node_id, uint8_t tpdo_id, const std::vector<int> &orders)
-    {
-        int cob_id = 16 * 16 * (tpdo_id + 1) + node_id;
-        uint32_t sdoRequestId = 0x600 + node_id;
-        uint32_t sdoResponseId = 0x580 + node_id; // SDO请求ID（根据实际协议可能需要调整）
-        uint8_t byte3, byte2, byte1, byte0;
-        uint8_t channel_id = tpdo_id - 1;
-        struct can_frame frame;
-        memset(&frame, 0, sizeof(frame));
-
-        // 去使能TPDO1
-        intToFourBytes(cob_id, byte3, byte2, byte1, byte0);
-        uint8_t data1[] = {0x23, channel_id, 0x14, 0x01, byte3, byte2, 0x00, 0x80};
-        if (!sendFrameWithRetry(sdoRequestId, data1, sizeof(data1)))
-        {
-            throw std::runtime_error("目标位置设置发送失败");
-        }
-
-        // 设置TPDO1的传输类型
-        // intToFourBytes(transmission_type, byte3, byte2, byte1, byte0);
-        uint8_t data2[] = {0x2F, channel_id, 0x14, 0x02, 1, 0x00, 0x00, 0x00};
-        if (!sendFrameWithRetry(sdoRequestId, data2, sizeof(data2)))
-        {
-            throw std::runtime_error("目标位置设置发送失败");
-        }
-
-        /*intToFourBytes(InhibitTime, byte3, byte2, byte1, byte0);
-        uint8_t data6[] = {0x2B, channel_id, 0x14, 0x02, byte3, byte2, 0, 0x00};
-        if(!sendFrameWithRetry(sdoRequestId, data6, sizeof(data6))) {
-            throw std::runtime_error("目标位置设置发送失败");
-        }*/
-
-        /*if(!receiveFrame(frame) || !validateResponseFrame(frame, sdoResponseId)) {
-            throw std::runtime_error("目标位置设置未收到有效响应");
-        }*/
-
-        // 清除原有映射
-        uint8_t data7[] = {0x2F, channel_id, 0x16, 0x00, 0x00, 0x00, 0x00, 0x00};
-        if (!sendFrameWithRetry(sdoRequestId, data7, sizeof(data7)))
-        {
-            throw std::runtime_error("目标位置设置发送失败");
-        }
-
-        uint8_t data3[] = {0x23, channel_id, 0x16, 0x01, 0, 0, 0, 0};
-        for (int i = 0; i < orders.size(); i++)
-        {
-            intToFourBytes(orders[i], byte3, byte2, byte1, byte0);
-            data3[3] = i + 1;
-            data3[4] = byte3;
-            data3[5] = byte2;
-            data3[6] = byte1;
-            data3[7] = byte0;
-            if (!sendFrameWithRetry(sdoRequestId, data3, sizeof(data3)))
-            {
-                throw std::runtime_error("目标位置设置发送失败");
-            }
-        }
-
-        /*set param 2
-        intToFourBytes(0x607A0020, byte3, byte2, byte1, byte0);
-        uint8_t data8[] = {0x23, channel_id, 0x16, 0x02, byte3, byte2, byte1, byte0};
-        if(!sendFrameWithRetry(sdoRequestId, data8, sizeof(data8))) {
-            throw std::runtime_error("目标位置设置发送失败");
-        }*/
-
-        // set the num of param
-        uint8_t data9[] = {0x2F, channel_id, 0x16, 0x00, sizeof(orders), 0, 0, 0};
-        if (!sendFrameWithRetry(sdoRequestId, data9, sizeof(data9)))
-        {
-            throw std::runtime_error("目标位置设置发送失败");
-        }
-
-        intToFourBytes(cob_id, byte3, byte2, byte1, byte0);
-        uint8_t data4[] = {0x23, channel_id, 0x14, 0x01, byte3, byte2, 0x00, 0x00};
-        if (!sendFrameWithRetry(sdoRequestId, data4, sizeof(data4)))
-        {
-            throw std::runtime_error("目标位置设置发送失败");
-        }
-    }
-
-    void pdo_set_up(uint8_t node_id)
-    {
-        struct can_frame frame;
-        memset(&frame, 0, sizeof(frame));
-
-        // 远程节点关闭
-        uint8_t data5[] = {0x01, node_id, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-        if (!sendFrameWithRetry(0x000, data5, sizeof(data5)))
-        {
-            throw std::runtime_error("PDO远程节点关闭失败");
-        }
-    }
-
-    void del_pdo(uint8_t node_id, uint8_t tpdo_id)
-    {
-        uint8_t channel_id = tpdo_id - 1;
-        uint32_t sdoRequestId = 0x600 + node_id;
-        uint32_t sdoResponseId = 0x580 + node_id;
-        uint8_t data7[] = {0x2F, channel_id, 0x16, 0x00, 0x00, 0x00, 0x00, 0x00};
-        if (!sendFrameWithRetry(sdoRequestId, data7, sizeof(data7)))
-        {
-            throw std::runtime_error("目标位置设置发送失败");
-        }
-
-        uint8_t data8[] = {0x2F, channel_id, 0x1A, 0x00, 0x00, 0x00, 0x00, 0x00};
-        if (!sendFrameWithRetry(sdoRequestId, data8, sizeof(data8)))
-        {
-            throw std::runtime_error("目标位置设置发送失败");
-        }
-    }
-
-    void set_bias(uint8_t node_id, int32_t bias)
-    {
-        uint32_t sdoRequestId = 0x600 + node_id;
-        uint32_t sdoResponseId = 0x580 + node_id;
-        uint8_t byte3, byte2, byte1, byte0;
-        intToFourBytes(bias, byte3, byte2, byte1, byte0);
-        uint8_t data7[] = {0x23, 0x08, 0x20, 0x00, byte3, byte2, byte1, byte0};
-        if (!sendFrameWithRetry(sdoRequestId, data7, sizeof(data7)))
-        {
-            throw std::runtime_error("目标位置设置发送失败");
-        }
-    }
-
-    void pdo_move(int sdoRequestId, uint32_t position)
-    {
-        if (position < 100)
-            position = 100;
-        send_sync();
-        uint8_t data[] = {0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00};
-        if (!sendFrameWithRetry(sdoRequestId, data, sizeof(data)))
-        {
-            throw std::runtime_error("初始化-远程节点关闭失败");
-        }
-        send_sync();
-
-        uint8_t data2[] = {0x00, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00};
-        if (!sendFrameWithRetry(sdoRequestId, data2, sizeof(data2)))
-        {
-            throw std::runtime_error("初始化-远程节点关闭失败");
-        }
-        send_sync();
-
-        uint8_t data3[] = {0x00, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00};
-        if (!sendFrameWithRetry(sdoRequestId, data3, sizeof(data3)))
-        {
-            throw std::runtime_error("初始化-远程节点关闭失败");
-        }
-        send_sync();
-
-        uint8_t byte3, byte2, byte1, byte0;
-        intToFourBytes(position, byte3, byte2, byte1, byte0);
-        uint8_t data4[] = {byte3, byte2, byte1, byte0, 0x1f, 0, 0, 0};
-        if (!sendFrameWithRetry(sdoRequestId, data4, sizeof(data4)))
-        {
-            throw std::runtime_error("目标位置设置发送失败");
-        }
-        send_sync();
-    }
-
+    // 析构函数
     ~CANBus()
     {
         if (sockfd >= 0)
             close(sockfd);
-        std::cout << "CAN总线关闭" << std::endl;
+        std::cout << "CAN总线各项参数配置完成" << std::endl;
     }
 };
 
 int main(int argc, char **argv)
 {
     // ROS节点初始化
+    ros::init(argc, argv, "robot_can_init");
     std::string name = "can0";
-    int mode = 1; // 轮廓位置模式
-    int acc = 1000;
-    int de_acc = 1000;
-    int velo = 500;
-    ros::init(argc, argv, "robot_can_init_node");
+    int mode = 1;                               // 轮廓位置模式
+    int acc = 1000, de_acc = 1000, velo = 1000; // 速度参数
     // 从终端命令行获取两个加数
     if (argc != 6)
     {
@@ -654,34 +574,64 @@ int main(int argc, char **argv)
         acc = std::stoi(argv[3]);
         de_acc = std::stoi(argv[4]);
         velo = std::stoi(argv[5]);
-        std::cout << acc << std::endl;
     }
-    CANBus can(name.c_str());
-    can.init(mode);
-    can.set_velo_acc_dacc(acc, de_acc, velo);
-    for (int i = 0; i < 7; i++)
+    CANBus can(name.c_str());                 // 实例对象
+    can.init(mode);                           // 初始化设置控制模式
+    can.set_velo_acc_dacc(acc, de_acc, velo); // 设置速度、加速度
+
+    // 清除原有映射参数，后面复位其实也会清除，这里都先留着吧
+    for (int i = 1; i <= 7; i++)
     {
-        for (int j = 0; j < 4; j++)
+        for (int j = 1; j <= 4; j++)
             can.del_pdo(i, j);
     }
-    // 实际位置、实际速度TPDO1
-    std::vector<int> orders_index1 = {0x60640020, 0x606C0020};
-    // 目标位置、控制子RPDO1
-    std::vector<int> orders_index2 = {0x607A0020, 0x60400010};
-    // 实际电流、位置环PID TPDO2
-    std::vector<int> orders_index3 = {0x60770010};
-    // 轮廓加减加速度 TPDO3
-    std::vector<int> orders_index4 = {0x60830020, 0x60840020};
-    int i;
-    for (i = 0; i < 7; i++)
+    // 复位节点，复位后会清除所有通信参数和映射参数，进入预操作状态
+    can.prepare_pdo();
+
+    // 设置PDO映射参数
+    std::vector<int> TPDO1_index = {0x60640020, 0x606C0020}; // TPDO1，实际位置0x6064，实际速度0x606C
+    std::vector<int> TPDO2_index = {0x60770010};             // TPDO2，实际扭矩0x6077
+    std::vector<int> RPDO1_index = {0x607A0020, 0x60400010}; // RPDO1，目标位置0x607A、控制字0x6040，6-7-15
+    for (int i = 1; i <= 7; i++)
     {
-        can.prepare_pdo(i + 1);
-        can.make_tpdo_bridge(i + 1, 1, orders_index1);
-        can.make_rpdo_bridge(i + 1, 1, orders_index2);
-        can.make_tpdo_bridge(i + 1, 2, orders_index3);
-        // can.make_tpdo_bridge(i + 1, 3, orders_index4);
-        can.pdo_set_up(i + 1);
+        can.make_tpdo_bridge(i, 1, TPDO1_index); // 通道1，反馈位置速度
+        can.make_tpdo_bridge(i, 2, TPDO2_index); // 通道2，反馈扭矩
+        can.make_rpdo_bridge(i, 1, RPDO1_index); // 通道1，发送位置
     }
+
+    // 开启远程节点，进入操作状态
+    can.pdo_set_up();
+
+    /*测试代码*/
+    /*PDO控制电机*/
+    for (int i = 1; i <= 7; i++)
+    {
+        can.pdo_move(0x200 + i,0);
+    }
+    can.send_sync(); // 同步触发，即使不发这个电机也可以运动。sync主要是同步一次tpdo反馈信号，即电机反馈信号。
+
+    /*SDO控制电机，读位置延迟较重*/
+    /*
+    int node_id = 0x601;                               // 假设节点ID为0x601
+    int target_position =0;                           // 目标位置为5000000
+    can.position_move_model(node_id, target_position); // 设置目标位置为5000000
+    while (true)
+    {
+        if (abs(can.listen_position_SDO(node_id) - target_position) > 50)
+        {
+            std::cout << "当前位置: " << can.listen_position_SDO(node_id) << "，距离目标位置: "
+                      << (can.listen_position_SDO(node_id) - target_position) << "，继续调整..." << std::endl;
+            usleep(100000); // 等待100ms
+            continue;
+        }
+        else
+        {
+            std::cout << "已到达目标位置，当前位置: " << can.listen_position_SDO(node_id) << std::endl;
+            break; // 如果当前位置接近目标位置则退出循环
+        }
+
+    }
+    */
 
     return 0;
 }
