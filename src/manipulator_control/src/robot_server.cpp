@@ -16,7 +16,7 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
-#include <driver_control/target_position.h>
+#include <manipulator_control/target_position.h>
 
 // CAN通信相关常量定义
 #define SDO_RESPONSE_TIMEOUT_MS 5 // SDO响应超时时间(毫秒)
@@ -288,7 +288,7 @@ public:
     std::atomic<bool> new_data_received_{false};                   // 原子变量，无需锁保护,新数据接收标志
 
     // 目标位置回调函数
-    void arrayCallback1(const driver_control::target_position::ConstPtr &msg)
+    void arrayCallback1(const manipulator_control::target_position::ConstPtr &msg)
     {
         std::lock_guard<std::mutex> lock(tpdo.data_mutex_);
         for (int i = 0; i < UNITS; i++)

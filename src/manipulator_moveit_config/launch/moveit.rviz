@@ -118,7 +118,7 @@ Visualization Manager:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-        Loop Animation: true
+        Loop Animation: false
         Robot Alpha: 1
         Robot Color: 150; 50; 150
         Show Robot Collision: false
@@ -245,9 +245,9 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.055000048130750656
+      Pitch: 0.4050000309944153
       Target Frame: base_link
-      Yaw: 0.001763671636581421
+      Yaw: 0.011764049530029297
     Saved: ~
 Window Geometry:
   Displays:

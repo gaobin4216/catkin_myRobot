@@ -1,5 +1,5 @@
 #include "ros/ros.h"
-#include "driver_control/target_position.h"
+#include <manipulator_control/target_position.h>
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit_msgs/DisplayTrajectory.h>
 #include <moveit_msgs/ExecuteTrajectoryActionGoal.h>
@@ -22,7 +22,7 @@ public:
     Client(ros::NodeHandle &nh) : target_(UNITS, 0.0)
     {
         // 初始化发布器，主题为"target_array"，队列大小为10
-        pub_ = nh.advertise<driver_control::target_position>("target_array", 10);
+        pub_ = nh.advertise<manipulator_control::target_position>("target_array", 10);
     }
 
     // 设置目标关节角度
@@ -37,7 +37,7 @@ public:
     // 生成并发送目标位置消息
     void generateAndSendData()
     {
-        driver_control::target_position msg;
+        manipulator_control::target_position msg;
 
         // 填充消息数据
         for (int i = 0; i < UNITS; i++)
