@@ -6,9 +6,10 @@ Panels:
       Expanded:
         - /MotionPlanning1
         - /MotionPlanning1/Scene Robot1
+        - /MotionPlanning1/Planning Request1
         - /MotionPlanning1/Planned Path1
       Splitter Ratio: 0.5
-    Tree Height: 410
+    Tree Height: 621
   - Class: rviz/Help
     Name: Help
   - Class: rviz/Views
@@ -117,13 +118,13 @@ Visualization Manager:
             Alpha: 1
             Show Axes: false
             Show Trail: false
-        Loop Animation: false
-        Robot Alpha: 0.5
+        Loop Animation: true
+        Robot Alpha: 1
         Robot Color: 150; 50; 150
         Show Robot Collision: false
         Show Robot Visual: true
         Show Trail: false
-        State Display Time: 0.05 s
+        State Display Time: 1x
         Trail Step Size: 1
         Trajectory Topic: move_group/display_planned_path
         Use Sim Time: false
@@ -136,7 +137,7 @@ Visualization Manager:
         TextHeight: 0.07999999821186066
       Planning Request:
         Colliding Link Color: 255; 0; 0
-        Goal State Alpha: 0.10000000149011612
+        Goal State Alpha: 1
         Goal State Color: 250; 128; 0
         Interactive Marker Size: 0.20000000298023224
         Joint Violation Color: 255; 0; 255
@@ -144,7 +145,7 @@ Visualization Manager:
         Query Goal State: true
         Query Start State: false
         Show Workspace: false
-        Start State Alpha: 0.10000000149011612
+        Start State Alpha: 1
         Start State Color: 0; 255; 0
       Planning Scene Topic: move_group/monitored_planning_scene
       Robot Description: robot_description
@@ -208,8 +209,8 @@ Visualization Manager:
             Show Axes: false
             Show Trail: false
         Robot Alpha: 1
-        Show Robot Collision: false
-        Show Robot Visual: true
+        Show Robot Collision: true
+        Show Robot Visual: false
       Value: true
       Velocity_Scaling_Factor: 0.1
   Enabled: true
@@ -236,22 +237,22 @@ Visualization Manager:
         Value: false
       Field of View: 0.75
       Focal Point:
-        X: 0.14420858025550842
-        Y: 0.5284277200698853
-        Z: 0.3060167729854584
+        X: 0.19810226559638977
+        Y: 0.22010880708694458
+        Z: 0.39962640404701233
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.1350001096725464
+      Pitch: 0.055000048130750656
       Target Frame: base_link
-      Yaw: 5.659948825836182
+      Yaw: 0.001763671636581421
     Saved: ~
 Window Geometry:
   Displays:
     collapsed: false
-  Height: 1043
+  Height: 1403
   Help:
     collapsed: false
   Hide Left Dock: false
@@ -260,9 +261,9 @@ Window Geometry:
     collapsed: false
   MotionPlanning - Trajectory Slider:
     collapsed: false
-  QMainWindow State: 000000ff00000000fd0000000100000000000001f3000003b9fc0200000009fb000000100044006900730070006c006100790073010000003d0000022b000000c900fffffffb0000000800480065006c00700000000342000000bb0000006e00fffffffb0000000a00560069006500770073000000010c000000a4000000a400fffffffb0000000c00430061006d00650072006100000002ff000001610000000000000000fb0000001e004d006f00740069006f006e00200050006c0061006e006e0069006e00670100000374000001890000000000000000fb00000044004d006f00740069006f006e0050006c0061006e006e0069006e00670020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000001600000016fb0000001c004d006f00740069006f006e0050006c0061006e006e0069006e0067010000026e000001880000017d00fffffffb000000280020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000000000000000fb0000001c004d006f00740069006f006e0050006c0061006e006e0069006e0067000000026e00000188000000000000000000000587000003b900000001000000020000000100000002fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000100000000000001f300000521fc0200000009fb000000100044006900730070006c006100790073010000003d000002fe000000c900fffffffb0000000800480065006c00700000000342000000bb0000006e00fffffffb0000000a00560069006500770073000000010c000000a4000000a400fffffffb0000000c00430061006d00650072006100000002ff000001610000000000000000fb0000001e004d006f00740069006f006e00200050006c0061006e006e0069006e00670100000374000001890000000000000000fb00000044004d006f00740069006f006e0050006c0061006e006e0069006e00670020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000001600000016fb0000001c004d006f00740069006f006e0050006c0061006e006e0069006e006701000003410000021d0000017d00fffffffb000000280020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000000000000000fb0000001c004d006f00740069006f006e0050006c0061006e006e0069006e0067000000026e000001880000000000000000000008070000052100000001000000020000000100000002fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   Views:
     collapsed: false
-  Width: 1920
+  Width: 2560
   X: 1920
   Y: 0

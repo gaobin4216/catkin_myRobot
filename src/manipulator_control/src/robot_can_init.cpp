@@ -560,7 +560,7 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "robot_can_init");
     std::string name = "can0";
     int mode = 1;                               // 轮廓位置模式
-    int acc = 100, de_acc = 100, velo = 100; // 速度参数
+    int acc = 500, de_acc = 500, velo = 500; // 速度参数
     // 从终端命令行获取两个加数
     if (argc != 6)
     {
