@@ -13,16 +13,19 @@
 #include <stdexcept>
 #include <vector>
 #include <sensor_msgs/JointState.h>
-#define SDO_RESPONSE_TIMEOUT_MS 5 // 调整为更合理的响应超时时间
+#include <thread>
+#include <mutex>
+#include <atomic>
+#include <driver_control/target_position.h>
+
+// CAN通信相关常量定义
+#define SDO_RESPONSE_TIMEOUT_MS 5 // SDO响应超时时间(毫秒)
 #define SDO_RETRY_COUNT 3         // 单次指令最大重试次数
-#define COMMAND_DELAY_US 10000    // 指令间最小间隔10ms
-#define PI 3.14159265358979323846
-#define MIN_MOVE 100
-#define REPEAT 100
-#define UNITS 7
-#define MIN_100_P 90
-// #include "driver_control/target_position.h"
-// #include "driver_control/target_answer.h"
+#define COMMAND_DELAY_US 10000    // 指令间最小间隔(微秒)
+#define PI 3.14159265358979323846 // 圆周率
+#define MIN_MOVE 20              // 最小运动检测阈值(脉冲数)
+#define UNITS 7                   // 电机/关节数量
+#define MIN_100_P 0.9             // 运动完成百分比阈值(90%)
 
 class PDO_listen
 {
@@ -30,8 +33,6 @@ private:
     int sockfd;
     struct sockaddr_can addr;
     struct ifreq ifr;
-    int transmission_type = 1;         // 设定为收到1个sync后触发pdo
-    int PULSES_PER_REVOLUTION = 65536; // 电机（或编码器）旋转一整圈（360度）时产生的脉冲信号数量
 
     // 私有辅助函数：带重试机制的帧发送
     bool sendFrameWithRetry(uint32_t id, uint8_t *data, uint8_t dlc, bool extended = false)
@@ -47,42 +48,20 @@ private:
         return false;
     }
 
-    // 私有辅助函数：验证接收帧是否匹配预期
-    bool validateResponseFrame(const struct can_frame &frame, uint32_t expectedId)
-    {
-        if ((frame.can_id & CAN_EFF_MASK) != expectedId)
-        {
-            std::cerr << "错误：接收到非预期的CAN ID，期望0x" << std::hex << expectedId
-                      << " 实际0x" << (frame.can_id & CAN_EFF_MASK) << std::dec << std::endl;
-            return false;
-        }
-        if (frame.can_dlc < 4)
-        {
-            std::cerr << "错误：接收到无效的SDO响应，数据长度不足" << std::endl;
-            return false;
-        }
-        return true;
-    }
-
-    // 输出vector内容
-    void cout_vector(const std::vector<int> &out)
-    {
-        for (int i = 0; i < 6; i++)
-        {
-            std::cout << out[i] << " ";
-        }
-        std::cout << out[6] << std::endl;
-    }
-    void cout_vector(const std::vector<double> &out)
-    {
-        for (int i = 0; i < 6; i++)
-        {
-            std::cout << out[i] << " ";
-        }
-        std::cout << out[6] << std::endl;
-    }
-
 public:
+    // 参数定义
+    std::vector<double> MECHANICAL_RATIO = {101.0, 101.0, 101.0, 101.0, 101.0, 101.0, 81.0};                                                                 // 电机减速比
+    std::vector<double> TF1_RATIO = {549756.0 / 29.9, 549756.0 / 29.9, 549756.0 / 29.9, 549756.0 / 29.9, 549756.0 / 29.9, 549756.0 / 29.9, 440893.0 / 29.9}; // 电机输出端每度对应的输入脉冲值
+    std::vector<double> VELOCITY_RATIO = {28.08, 28.08, 28.08, 28.08, 28.08, 28.08, 22.527};                                                                 // 电机输出端1度每秒对应的输入速度值
+    std::vector<double> EFFORT_RATIO = {3.3, 3.3, 49, 49, 49, 49, 8.6};                                                                                      // 单位mNM,读数乘以它就是力矩
+
+    // 电机状态
+    std::mutex data_mutex_; // 加锁，防止数据被同时读写
+    std::vector<int> position = {0, 0, 0, 0, 0, 0, 0};
+    std::vector<double> angle = {0, 0, 0, 0, 0, 0, 0};
+    std::vector<double> velocity = {0, 0, 0, 0, 0, 0, 0};
+    std::vector<double> effort = {0, 0, 0, 0, 0, 0, 0};
+
     // 构造函数，创建并初始化 CAN 总线，在制定的can接口上（默认can0）初始化一个socketcan通信通道
     PDO_listen(const char *interface = "can0")
     {
@@ -111,16 +90,6 @@ public:
 
         std::cout << "CAN总线在" << interface << "上初始化完成" << std::endl;
     }
-
-    // 参数定义
-    std::vector<double> MECHANICAL_RATIO = {101.0, 101.0, 101.0, 101.0, 101.0, 101.0, 81.0};                                                                 // 电机减速比
-    std::vector<double> TF1_RATIO = {549756.0 / 29.9, 549756.0 / 29.9, 549756.0 / 29.9, 549756.0 / 29.9, 549756.0 / 29.9, 549756.0 / 29.9, 440893.0 / 29.9}; // 电机输出端每度对应的输入脉冲值
-    std::vector<double> VELOCITY_RATIO = {28.08, 28.08, 28.08, 28.08, 28.08, 28.08, 22.527};                                                             // 电机输出端1度每秒对应的输入速度值
-    std::vector<double> EFFORT_RATIO = {3.3, 3.3, 49, 49, 49, 49, 8.6};                                                                                      // 单位mNM,读数乘以它就是力矩
-    std::vector<int> position = {0, 0, 0, 0, 0, 0, 0};
-    std::vector<double> angle = {0, 0, 0, 0, 0, 0, 0};
-    std::vector<double> velocity = {0, 0, 0, 0, 0, 0, 0};
-    std::vector<double> effort = {0, 0, 0, 0, 0, 0, 0};
 
     // 发送 CAN 帧（基础版），成功发送会返回true
     bool sendFrame(uint32_t id, uint8_t *data, uint8_t dlc, bool extended = false)
@@ -175,36 +144,46 @@ public:
         }
         return true;
     }
-  
-    // 发送 PDO模式的CAN 帧，无返回值
-    void send_pdo_Frame(uint32_t id, uint8_t *data, uint8_t dlc, bool extended = false)
+
+    // PDO控制电机运动到指定位置
+    void pdo_move(int RequestId, uint32_t position_p)
     {
-        struct can_frame frame;
-        memset(&frame, 0, sizeof(frame));
+        // 下使能
+        uint8_t data[] = {0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(RequestId, data, sizeof(data)))
+        {
+            throw std::runtime_error("下使能失败");
+        }
 
-        frame.can_id = id;
-        if (extended)
-            frame.can_id |= CAN_EFF_FLAG;
-        frame.can_dlc = std::min(dlc, (uint8_t)8); // 严格限制数据长度
-
-        memcpy(frame.data, data, frame.can_dlc);
-        write(sockfd, &frame, sizeof(frame));
+        // 上使能
+        uint8_t data3[] = {0x00, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(RequestId, data3, sizeof(data3)))
+        {
+            throw std::runtime_error("上使能失败");
+        }
+        // 命令触发
+        uint8_t byte3, byte2, byte1, byte0;
+        intToFourBytes(position_p, byte3, byte2, byte1, byte0);
+        uint8_t data4[] = {byte3, byte2, byte1, byte0, 0x1f, 0x00, 0x00, 0x00};
+        if (!sendFrameWithRetry(RequestId, data4, sizeof(data4)))
+        {
+            throw std::runtime_error("目标位置发送失败");
+        }
     }
 
     // 将客户端发来的指令通过pdo发给电机
     void client_out(const std::vector<double> &data)
     {
-        int temp_position;
+        std::lock_guard<std::mutex> lock(data_mutex_);
         for (int i = 0; i < UNITS; i++)
         {
-            temp_position = data[i] * TF1_RATIO[i] / 1; // 将目标的角度转换为脉冲数。
-            if (std::abs(temp_position - position[i]) > MIN_MOVE)
+            int temp_position = data[i] * TF1_RATIO[i] / 1;       // 将目标的角度转换为脉冲数。
+            if (std::abs(temp_position - position[i]) > MIN_MOVE) // 如果运动量超过阈值，则发送指令
             {
                 pdo_move(i + 0x201, temp_position);
                 std::cout << std::hex << i + 0x201 << std::dec << "  " << temp_position << std::endl;
             }
         }
-        ROS_INFO("Move end:");
     }
 
     // 发送sync同步帧0x080，单向广播​​，不要求接收方回复，​​SYNC 帧本身不要求回复​​，但会触发节点发送 PDO
@@ -228,17 +207,12 @@ public:
     }
 
     // 16进制的四个单字节整数转换为16进制四字节整数
-    int FourBytesToint(uint8_t byte3, uint8_t byte2, uint8_t byte1, uint8_t byte0)
+    int32_t FourBytesToint(uint8_t byte3, uint8_t byte2, uint8_t byte1, uint8_t byte0)
     {
-        int i1 = int(byte0);
-        // std::cout<<i1<<std::endl;
-        i1 = i1 * 16 * 16 + int(byte1);
-        // std::cout<<i1<<std::endl;
-        i1 = i1 * 16 * 16 + int(byte2);
-        // std::cout<<i1<<std::endl;
-        i1 = i1 * 16 * 16 + int(byte3);
-        // std::cout<<i1<<std::endl;
-        return i1;
+        return (static_cast<int32_t>(byte0) << 24) |
+               (static_cast<int32_t>(byte1) << 16) |
+               (static_cast<int32_t>(byte2) << 8) |
+               static_cast<int32_t>(byte3);
     }
 
     // 将返回的脉冲和速度解析
@@ -246,10 +220,8 @@ public:
     {
         if (frame.can_id < 0x200 && frame.can_id > 0x180)
         {
-            int id = frame.can_id - 0x181;
-            position[id] = FourBytesToint(frame.data[0], frame.data[1], frame.data[2], frame.data[3]); // 实际角度对应的脉冲
-            // std::cout<<int(byte3)<<std::endl;
-            // position[id] = position[id] + bias_p[id];
+            int id = frame.can_id - 0x181;                                                                                  // 计算电机ID-1
+            position[id] = FourBytesToint(frame.data[0], frame.data[1], frame.data[2], frame.data[3]);                      // 实际角度对应的脉冲
             angle[id] = double(position[id]) / TF1_RATIO[id];                                                               // 实际角度
             velocity[id] = FourBytesToint(frame.data[4], frame.data[5], frame.data[6], frame.data[7]) / VELOCITY_RATIO[id]; // 实际的速度，单位：度/s
         }
@@ -261,222 +233,210 @@ public:
         if (frame.can_id < 0x300 && frame.can_id > 0x280)
         {
             int id = frame.can_id - 0x281;
-            int16_t temp = FourBytesToint(frame.data[0], frame.data[1], 0, 0);
+            int16_t temp = FourBytesToint(frame.data[0], frame.data[1], 0, 0); // 力矩实际只有16位
             effort[id] = temp * EFFORT_RATIO[id] / 1000;
         }
-    }
-   
-    // PDO控制电机运动到指定位置
-    void pdo_move(int RequestId, uint32_t position_p)
-    {
-        uint8_t data[] = {0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00};
-        for (int i = 0; i < REPEAT; i++)
-        {
-            send_pdo_Frame(RequestId, data, sizeof(data));
-        }
-        send_sync();
-
-        uint8_t data3[] = {0x00, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00};
-        for (int i = 0; i < REPEAT; i++)
-        {
-            send_pdo_Frame(RequestId, data3, sizeof(data3));
-        }
-        send_sync();
-
-        uint8_t byte3, byte2, byte1, byte0;
-        intToFourBytes(position_p, byte3, byte2, byte1, byte0);
-        uint8_t data4[] = {byte3, byte2, byte1, byte0, 0x1f, 0, 0, 0};
-        send_pdo_Frame(RequestId, data4, sizeof(data4));
-
-        for (int i = 0; i < REPEAT; i++)
-        {
-            send_pdo_Frame(RequestId, data4, sizeof(data4));
-        }
-        send_sync();
     }
 
     // 输出反馈的数据
     void print_out()
     {
-        std::cout << "position:  ";
-        cout_vector(position);
-        std::cout << "angle:  ";
-        cout_vector(angle);
-        std::cout << "velocity:  ";
-        cout_vector(velocity);
-        std::cout << "effort:  ";
-        cout_vector(effort);
-        std::cout << std::endl;
+        std::lock_guard<std::mutex> lock(data_mutex_);
+        ROS_INFO_STREAM("position:" << position[0] << " " << position[1] << " " << position[2] << " "
+                                    << position[3] << " " << position[4] << " " << position[5] << " " << position[6]);
+        ROS_INFO_STREAM("angle: " << angle[0] << " " << angle[1] << " " << angle[2] << " "
+                                  << angle[3] << " " << angle[4] << " " << angle[5] << " " << angle[6]);
+        ROS_INFO_STREAM("velocity: " << velocity[0] << " " << velocity[1] << " " << velocity[2] << " "
+                                     << velocity[3] << " " << velocity[4] << " " << velocity[5] << " " << velocity[6]);
+        ROS_INFO_STREAM("effort: " << effort[0] << " " << effort[1] << " " << effort[2] << " "
+                                   << effort[3] << " " << effort[4] << " " << effort[5] << " " << effort[6]);
     }
+
+    // 析构函数
+    ~PDO_listen()
+    {
+        if (sockfd >= 0)
+        {
+            close(sockfd);
+            sockfd = -1;
+        }
+    };
 };
 
 class Server
 {
 private:
-    std::mutex data_mutex_;
-    std::vector<std::string> joint_names = {
-        "joint1",
-        "joint2",
-        "joint3",
-        "joint4",
-        "joint5",
-        "joint6",
-        "joint7"};
+    std::vector<std::string> joint_names = {"joint1", "joint2", "joint3", "joint4", "joint5", "joint6", "joint7"}; // 关节名称
+    sensor_msgs::JointState joint_state;                                                                           // 关节状态消息
+
+    std::atomic<bool> running_{true}; // 线程运行标志
+    std::thread listener_thread_;     // 监听线程
+    std::thread controller_thread_;   // 控制线程
 
 public:
-    Server() {}
-    PDO_listen tpdo{"can0"};
-    std::vector<double> previous_position = {0, 0, 0, 0, 0, 0, 0};
-    int complete_number = UNITS; // 7
-    bool new_data_received_ = false;
-    std::vector<double> delta_data_ = {0, 0, 0, 0, 0, 0, 0};
-
-    void one_by_one_divide()
+    Server()
     {
-        complete_number = 0;
-        for (int i = 0; i < UNITS; i++)
-        {
-            // std::cout << delta_data_[i] << "@@@" << previous_position[i] << std::endl;
-            if (delta_data_[i] < MIN_MOVE / tpdo.TF1_RATIO[i])
-            {
-                complete_number = complete_number + 1;
-            }
-            else
-            {
-                if (std::abs((tpdo.angle[i] - previous_position[i]) / delta_data_[i]) / 0.01 > MIN_100_P)
-                {
-                    complete_number = complete_number + 1;
-                }
-            }
-        }
-
+        joint_state.name = joint_names;
+        joint_state.position.resize(UNITS, 0.0);
+        joint_state.velocity.resize(UNITS, 0.0);
+        joint_state.effort.resize(UNITS, 0.0);
     }
-    /**/
+    PDO_listen tpdo{"can0"};                                       // 实例化PDO_listen类为tpdo，// CAN通信对象
+    std::vector<double> previous_position = {0, 0, 0, 0, 0, 0, 0}; // 上一位置，关节角度
+    std::vector<double> target_position = {0, 0, 0, 0, 0, 0, 0};   // 目标位置，关节角度
+    int complete_number = 0;                                       // 完成运动的关节数
+    std::atomic<bool> new_data_received_{false};                   // 原子变量，无需锁保护,新数据接收标志
+
+    // 目标位置回调函数
     void arrayCallback1(const driver_control::target_position::ConstPtr &msg)
     {
-        std::lock_guard<std::mutex> lock(data_mutex_);
-        for (int i = 0; i < 7; i++)
+        std::lock_guard<std::mutex> lock(tpdo.data_mutex_);
+        for (int i = 0; i < UNITS; i++)
         {
-            delta_data_[i] = msg->data[i];
+            target_position[i] = msg->data[i];
             previous_position[i] = tpdo.angle[i];
         }
-        new_data_received_ = true;
+        new_data_received_ = true; // 新数据已接收
     }
 
-    void processData()
+    // 检查运动完成情况
+    void motionState_check()
     {
-        std::lock_guard<std::mutex> lock(data_mutex_);
-        if (new_data_received_)
+        int temp_complete = 0;
+        for (int i = 0; i < UNITS; i++)
         {
-            ROS_INFO("New data received:");
-            /*for(int i = 0; i < 7; i++) {
-                ROS_INFO("Element %d: %f", i, latest_data_[i]);
-            }*/
-            tpdo.client_out(delta_data_);
-            new_data_received_ = false;
-        }
-        else
-        {
-            ROS_DEBUG("No new data received, continuing normal operation...");
-            // 这里可以添加服务端自己的处理逻辑
-        }
-    }
-
-    void run(int frequency)
-    {
-        ros::NodeHandle nh;
-        struct can_frame frame;
-        std::vector<double> joint_positions(joint_names.size(), 0.0);
-        std::vector<double> joint_velocities(joint_names.size(), 0.0);
-        std::vector<double> joint_efforts(joint_names.size(), 0.0);
-
-        // 发布关节状态
-        ros::Publisher joint_state_pub = nh.advertise<sensor_msgs::JointState>("joint_states", 10);
-
-        // 订阅轨迹点
-        bool need_subscribe = true; // 控制订阅的标志位
-        ros::Subscriber sub;        // 声明订阅对象（不立即初始化）
-
-        ros::Rate loop_rate(frequency); // 10Hz
-        ROS_INFO("server is running...");
-        int pre_complete_num = UNITS;
-
-        while (ros::ok())
-        {
-            // 按需重新订阅
-            if (need_subscribe)
+            double target_displacement, actual_displacement;
             {
-                sub = nh.subscribe("target_array", 10, &Server::arrayCallback1, this);
-                need_subscribe = false; // 重置标志位
-                ROS_INFO("Resubscribed to target_array");
+                std::lock_guard<std::mutex> lock(tpdo.data_mutex_);
+                target_displacement = target_position[i] - previous_position[i];
+                actual_displacement = tpdo.angle[i] - previous_position[i];
             }
+            // 防止反向运动
+            if (target_displacement * actual_displacement < 0)
+                continue;
 
-            // Create JointState message
-            sensor_msgs::JointState joint_state;
-
-            // Set header with current time
-            joint_state.header.stamp = ros::Time::now();
-
-            // Set joint names
-            joint_state.name = joint_names;
-
-            tpdo.send_sync();
-            for (int i = 0; i < 21; i++)
+            // 检查是否到位
+            if (std::abs(actual_displacement) < MIN_MOVE / tpdo.TF1_RATIO[i] || std::abs(actual_displacement / target_displacement) >= MIN_100_P)
             {
+                temp_complete++;
+            }
+        }
+        complete_number = temp_complete;
+    }
+
+    // 监听线程函数
+    void listenerThreadFunc()
+    {
+        ros::Rate rate(50); // 监听频率
+        ros::NodeHandle nh;
+        ros::Publisher joint_state_pub = nh.advertise<sensor_msgs::JointState>("joint_states", 10); // 关节状态发布器
+        while (running_ && ros::ok())
+        {
+            can_frame frame = {0};
+            tpdo.send_sync(); // 发送SYNC触发PDO传输
+
+            // 接收并解析14个PDO帧(7个电机×2种PDO)，为了保险，多接受一些
+            for (int i = 0; i < 14; i++)
+            {
+                std::lock_guard<std::mutex> lock(tpdo.data_mutex_);
                 if (tpdo.receiveFrame(frame))
                 {
                     tpdo.decode_posi_velo(frame);
                     tpdo.decode_effr(frame);
-                    // tpdo.decode_acc_de_acc(frame);
                 }
             }
+
+            // 输出状态
             tpdo.print_out();
-            // Set joint positions (modify with your actual values)
-            for (size_t i = 0; i < joint_positions.size(); ++i)
+
+            // 发布状态
+            joint_state.header.stamp = ros::Time::now();
+            for (int i = 0; i < UNITS; i++)
             {
-
-                joint_positions[i] = tpdo.angle[i] / 180 * PI;
-                joint_velocities[i] = tpdo.velocity[i] / 180 * PI;
-                joint_efforts[i] = tpdo.effort[i];
-                /*if(i%2==0){
-                    joint_positions[i] = -joint_positions[i];
-                }*/
+                std::lock_guard<std::mutex> lock(tpdo.data_mutex_);
+                joint_state.position[i] = tpdo.angle[i] / 180 * PI;
+                joint_state.velocity[i] = tpdo.velocity[i] / 180 * PI;
+                joint_state.effort[i] = tpdo.effort[i];
             }
-            joint_state.position = joint_positions;
-            joint_state.velocity = joint_velocities;
-            joint_state.effort = joint_efforts;
-
-            // Publish the message,会在中间加入0
             joint_state_pub.publish(joint_state);
+            rate.sleep(); // 保持频率
+        }
+    }
 
-            ros::spinOnce();
+    // 控制线程函数
+    void controllerThreadFunc()
+    {
+        ros::Rate rate(50); // 频率
+        ros::NodeHandle nh;
+        ros::Subscriber sub;
+        std::atomic<bool> need_subscribe{true}; // 订阅标志
 
+        while (running_ && ros::ok())
+        {
+            // 处理订阅
+            if (need_subscribe)
+            {
+                need_subscribe = false; // 暂时无需订阅
+                sub = nh.subscribe("target_array", 10, &Server::arrayCallback1, this);
+                
+            }
+            ros::spinOnce();//触发回调
+
+            // 处理新数据，控制电机
             if (new_data_received_)
             {
-                processData();
-                new_data_received_ = false; // 重置接收标志
-                // 取消当前订阅但不删除对象
-                sub.shutdown();
-                need_subscribe = true; // 标记需要重新订阅
+                new_data_received_ = false;
+                tpdo.client_out(target_position);
+                sub.shutdown(); // 取消订阅
             }
-            if (pre_complete_num < UNITS && complete_number == UNITS)
-            {
-                need_subscribe = true; // 满足条件时标记需要重新订阅
-                // ros::Subscriber sub = nh.subscribe("target_array", 10, &Server::arrayCallback1, this);
-            }
-            one_by_one_divide();
-            pre_complete_num = complete_number;
 
-            loop_rate.sleep();
-            std::cout << new_data_received_ << "  " << pre_complete_num << "  " << need_subscribe << std::endl;
+            // 运动监控
+            motionState_check();
+
+            // 检查运动完成情况
+            if (complete_number == UNITS)
+            {
+                complete_number = 0;   // 完成运动的关节数
+                need_subscribe = true; // 运动完成后准备重新订阅
+            }
+
+            rate.sleep(); // 保持频率
         }
+    }
+
+    // 启动服务器
+    void run()
+    {
+        listener_thread_ = std::thread(&Server::listenerThreadFunc, this);
+        controller_thread_ = std::thread(&Server::controllerThreadFunc, this);
+        std::cout << "服务器已启动，监听线程和控制线程同步运行" << std::endl;
+    }
+
+    // 停止服务器
+    void stop()
+    {
+        running_ = false; // 设置停止标志
+        if (listener_thread_.joinable())
+            listener_thread_.join();
+        if (controller_thread_.joinable())
+            controller_thread_.join();
+        ros::shutdown();
+    }
+
+    // 析构函数
+    ~Server()
+    {
+        stop(); // 析构时确保线程停止
     }
 };
 
 int main(int argc, char **argv)
 {
-    ros::init(argc, argv, "robot_server");
+    ros::init(argc, argv, "robot_server"); // 初始化节点
+    ros::NodeHandle nh;                    // 确保ROS完全初始化
     Server server;
-    server.run(100);
+    server.run();
+
+    ros::spin(); // 处理回调函数
     return 0;
 }

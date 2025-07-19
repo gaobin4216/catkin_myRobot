@@ -560,7 +560,7 @@ int main(int argc, char **argv)
     ros::init(argc, argv, "robot_can_init");
     std::string name = "can0";
     int mode = 1;                               // 轮廓位置模式
-    int acc = 1000, de_acc = 1000, velo = 1000; // 速度参数
+    int acc = 100, de_acc = 100, velo = 100; // 速度参数
     // 从终端命令行获取两个加数
     if (argc != 6)
     {
@@ -604,12 +604,13 @@ int main(int argc, char **argv)
 
     /*测试代码*/
     /*PDO控制电机*/
-    for (int i = 1; i <= 7; i++)
+    /*for (int i = 1; i <= 7; i++)
     {
         can.pdo_move(0x200 + i,0);
     }
     can.send_sync(); // 同步触发，即使不发这个电机也可以运动。sync主要是同步一次tpdo反馈信号，即电机反馈信号。
-
+    */
+   
     /*SDO控制电机，读位置延迟较重*/
     /*
     int node_id = 0x601;                               // 假设节点ID为0x601

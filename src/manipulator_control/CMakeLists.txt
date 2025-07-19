@@ -4,6 +4,7 @@ project(manipulator_control)
 ## Compile as C++11, supported in ROS Kinetic and newer
 # add_compile_options(-std=c++11)
 
+set(Eigen3_DIR "/usr/lib/cmake/eigen3") 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
@@ -11,6 +12,11 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   std_msgs
+  message_generation
+  Eigen3
+  moveit_core
+  moveit_ros_planning
+  moveit_ros_planning_interface
 )
 
 ## System dependencies are found with CMake's conventions
@@ -47,6 +53,9 @@ find_package(catkin REQUIRED COMPONENTS
 ##   * add every package in MSG_DEP_SET to generate_messages(DEPENDENCIES ...)
 
 ## Generate messages in the 'msg' folder
+
+add_message_files( FILES target_position.msg)
+
 # add_message_files(
 #   FILES
 #   Message1.msg
@@ -68,6 +77,9 @@ find_package(catkin REQUIRED COMPONENTS
 # )
 
 ## Generate added messages and services with any dependencies listed here
+
+generate_messages(DEPENDENCIES std_msgs)
+
 # generate_messages(
 #   DEPENDENCIES
 #   std_msgs
@@ -107,6 +119,7 @@ catkin_package(
 #  LIBRARIES manipulator_control
 #  CATKIN_DEPENDS roscpp rospy std_msgs
 #  DEPENDS system_lib
+   CATKIN_DEPENDS message_runtime roscpp std_msgs
 )
 
 ###########
@@ -118,6 +131,7 @@ catkin_package(
 include_directories(
 # include
   ${catkin_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIRS}  # 添加Eigen头文件路径
 )
 
 ## Declare a C++ library
@@ -137,8 +151,10 @@ include_directories(
 
 add_executable(robot_can_init src/robot_can_init.cpp)
 target_link_libraries(robot_can_init ${catkin_LIBRARIES})
-## add_executable(robot_server src/robot_server.cpp)
-## target_link_libraries(robot_server ${catkin_LIBRARIES})
+add_executable(robot_server src/robot_server.cpp)
+target_link_libraries(robot_server ${catkin_LIBRARIES})
+add_executable(robot_client src/robot_client.cpp)
+target_link_libraries(robot_client ${catkin_LIBRARIES})
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the

@@ -255,6 +255,7 @@ public:
         return i1;
     }
 
+    
     // 将返回的脉冲和速度解析
     void decode_posi_velo(struct can_frame &frame)
     {
