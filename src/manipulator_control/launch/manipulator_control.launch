@@ -1,6 +1,6 @@
 <launch>
-  <!-- 1. 启动MoveIt -->
-  <include file="$(find manipulator_moveit_config)/launch/myRobot_jointstates.launch" />
+
+  <param name="/use_sim_time" value="false" />
 
   <!-- 2. CAN初始化节点 -->
   <node name="robot_can_init" 
@@ -16,10 +16,13 @@
         output="screen"
         launch-prefix="bash -c &quot;sleep 5; xterm -fn '*xft:Monospace:size=20:antialias=true' -e rosrun manipulator_control robot_server&quot;" />
 
-  <!-- 4. 客户端节点（延迟3秒） -->
+  <!-- 1. 启动MoveIt -->
+  <include file="$(find manipulator_moveit_config)/launch/myRobot_jointstates.launch" />
+
+  <!-- 4. 客户端节点（延迟3秒）-->
   <node name="robot_client" 
         pkg="manipulator_control" 
         type="robot_client" 
         output="screen"
-        launch-prefix="bash -c &quot;sleep 3; xterm -fn '*xft:Monospace:size=20:antialias=true' -e rosrun manipulator_control robot_client&quot;" />
+        launch-prefix="bash -c &quot;sleep 3; xterm -fn '*xft:Monospace:size=20:antialias=true' -e rosrun manipulator_control robot_client&quot;" /> 
 </launch>

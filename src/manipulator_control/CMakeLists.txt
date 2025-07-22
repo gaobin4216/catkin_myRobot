@@ -18,6 +18,9 @@ find_package(catkin REQUIRED COMPONENTS
   moveit_ros_planning
   moveit_ros_planning_interface
   moveit_visual_tools
+  moveit_msgs
+  actionlib_msgs
+  tf2_geometry_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -156,6 +159,8 @@ add_executable(robot_server src/robot_server.cpp)
 target_link_libraries(robot_server ${catkin_LIBRARIES})
 add_executable(robot_client src/robot_client.cpp)
 target_link_libraries(robot_client ${catkin_LIBRARIES}) 
+add_executable(robot_circle src/robot_circle.cpp)
+target_link_libraries(robot_circle ${catkin_LIBRARIES}) 
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the

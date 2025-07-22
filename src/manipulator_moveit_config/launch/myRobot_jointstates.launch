@@ -14,6 +14,10 @@
   <arg name="use_gui" default="false" />
   <arg name="use_rviz" default="true" />
 
+
+  <!-- 新增末端执行器参数（关键位置） -->
+  <param name="move_group/end_effector_link" value="link7" />
+  
   <!-- 修改条件：仅在明确启用时使用虚拟关节状态 -->
   <group if="$(arg use_fake_joint_states)">
     <node name="joint_state_publisher" pkg="joint_state_publisher" type="joint_state_publisher" unless="$(arg use_gui)">

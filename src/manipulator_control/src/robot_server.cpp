@@ -23,13 +23,14 @@
 #define SDO_RETRY_COUNT 3         // 单次指令最大重试次数
 #define COMMAND_DELAY_US 10000    // 指令间最小间隔(微秒)
 #define PI 3.14159265358979323846 // 圆周率
-#define MIN_MOVE 20              // 最小运动检测阈值(脉冲数)
+#define MIN_MOVE 50               // 最小运动检测阈值(脉冲数)
 #define UNITS 7                   // 电机/关节数量
-#define MIN_100_P 0.9             // 运动完成百分比阈值(90%)
+#define MIN_100_P 0.95            // 运动完成百分比阈值(90%)
 
 class PDO_listen
 {
 private:
+    std::vector<bool> motor_enabled_; // 跟踪电机使能状态
     int sockfd;
     struct sockaddr_can addr;
     struct ifreq ifr;
@@ -62,8 +63,8 @@ public:
     std::vector<double> velocity = {0, 0, 0, 0, 0, 0, 0};
     std::vector<double> effort = {0, 0, 0, 0, 0, 0, 0};
 
-    // 构造函数，创建并初始化 CAN 总线，在制定的can接口上（默认can0）初始化一个socketcan通信通道
-    PDO_listen(const char *interface = "can0")
+    // 构造函数，创建并初始化 CAN 总线，在制定的can接口上（默认can0）初始化一个socketcan通信通道,在构造函数中初始化使能状态
+    PDO_listen(const char *interface = "can0") : motor_enabled_(UNITS, false)
     {
         // 创建 socket
         if ((sockfd = socket(PF_CAN, SOCK_RAW, CAN_RAW)) < 0)
@@ -148,19 +149,25 @@ public:
     // PDO控制电机运动到指定位置
     void pdo_move(int RequestId, uint32_t position_p)
     {
-        // 下使能
-        uint8_t data[] = {0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00};
-        if (!sendFrameWithRetry(RequestId, data, sizeof(data)))
+        // 只在需要时改变使能状态
+        int motor_idx = RequestId - 0x201;
+        if (!motor_enabled_[motor_idx])
         {
-            throw std::runtime_error("下使能失败");
+            // 下使能
+            uint8_t data[] = {0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00};
+            if (!sendFrameWithRetry(RequestId, data, sizeof(data)))
+            {
+                throw std::runtime_error("下使能失败");
+            }
+            // 上使能
+            uint8_t enable_data[] = {0x00, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00};
+            if (!sendFrameWithRetry(RequestId, enable_data, sizeof(enable_data)))
+            {
+                throw std::runtime_error("上使能失败");
+            }
+            motor_enabled_[motor_idx] = true;
         }
 
-        // 上使能
-        uint8_t data3[] = {0x00, 0x00, 0x00, 0x00, 0x0f, 0x00, 0x00, 0x00};
-        if (!sendFrameWithRetry(RequestId, data3, sizeof(data3)))
-        {
-            throw std::runtime_error("上使能失败");
-        }
         // 命令触发
         uint8_t byte3, byte2, byte1, byte0;
         intToFourBytes(position_p, byte3, byte2, byte1, byte0);
@@ -171,17 +178,37 @@ public:
         }
     }
 
+    // 添加关闭时禁用所有电机的函数
+    void disable_all_motors()
+    {
+        uint8_t disable_data[] = {0x00, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00};
+        for (int i = 0; i < UNITS; ++i)
+        {
+            if (motor_enabled_[i])
+            {
+                sendFrameWithRetry(i + 0x201, disable_data, sizeof(disable_data));
+                motor_enabled_[i] = false;
+            }
+        }
+    }
+
     // 将客户端发来的指令通过pdo发给电机
     void client_out(const std::vector<double> &data)
     {
-        std::lock_guard<std::mutex> lock(data_mutex_);
+        std::vector<int> temp_positions(UNITS);
+        {
+            std::lock_guard<std::mutex> lock(data_mutex_);
+            for (int i = 0; i < UNITS; i++)
+            {
+                temp_positions[i] = data[i] * TF1_RATIO[i];
+            }
+        }
+
         for (int i = 0; i < UNITS; i++)
         {
-            int temp_position = data[i] * TF1_RATIO[i] / 1;       // 将目标的角度转换为脉冲数。
-            if (std::abs(temp_position - position[i]) > MIN_MOVE) // 如果运动量超过阈值，则发送指令
+            if (std::abs(temp_positions[i] - position[i]) > MIN_MOVE)
             {
-                pdo_move(i + 0x201, temp_position);
-                std::cout << std::hex << i + 0x201 << std::dec << "  " << temp_position << std::endl;
+                pdo_move(i + 0x201, temp_positions[i]);
             }
         }
     }
@@ -275,26 +302,22 @@ private:
 
 public:
     Server()
-    {
-        joint_state.name = joint_names;
+    {        
         joint_state.position.resize(UNITS, 0.0);
         joint_state.velocity.resize(UNITS, 0.0);
         joint_state.effort.resize(UNITS, 0.0);
     }
-    PDO_listen tpdo{"can0"};                                       // 实例化PDO_listen类为tpdo，// CAN通信对象
-    std::vector<double> previous_position = {0, 0, 0, 0, 0, 0, 0}; // 上一位置，关节角度
-    std::vector<double> target_position = {0, 0, 0, 0, 0, 0, 0};   // 目标位置，关节角度
-    int complete_number = 0;                                       // 完成运动的关节数
-    std::atomic<bool> new_data_received_{false};                   // 原子变量，无需锁保护,新数据接收标志
+    PDO_listen tpdo{"can0"};                                     // 实例化PDO_listen类为tpdo，// CAN通信对象
+    std::vector<double> target_position = {0, 0, 0, 0, 0, 0, 0}; // 目标位置，关节角度
+    int complete_number = 0;                                     // 完成运动的关节数
+    std::atomic<bool> new_data_received_{false};                 // 原子变量，无需锁保护,新数据接收标志
 
     // 目标位置回调函数
     void arrayCallback1(const manipulator_control::target_position::ConstPtr &msg)
     {
-        std::lock_guard<std::mutex> lock(tpdo.data_mutex_);
         for (int i = 0; i < UNITS; i++)
         {
             target_position[i] = msg->data[i];
-            previous_position[i] = tpdo.angle[i];
         }
         new_data_received_ = true; // 新数据已接收
     }
@@ -305,18 +328,9 @@ public:
         int temp_complete = 0;
         for (int i = 0; i < UNITS; i++)
         {
-            double target_displacement, actual_displacement;
-            {
-                std::lock_guard<std::mutex> lock(tpdo.data_mutex_);
-                target_displacement = target_position[i] - previous_position[i];
-                actual_displacement = tpdo.angle[i] - previous_position[i];
-            }
-            // 防止反向运动
-            if (target_displacement * actual_displacement < 0)
-                continue;
-
+            std::lock_guard<std::mutex> lock(tpdo.data_mutex_);
             // 检查是否到位
-            if (std::abs(actual_displacement) < MIN_MOVE / tpdo.TF1_RATIO[i] || std::abs(actual_displacement / target_displacement) >= MIN_100_P)
+            if (std::abs(target_position[i] - tpdo.angle[i]) <= MIN_MOVE / tpdo.TF1_RATIO[i])
             {
                 temp_complete++;
             }
@@ -335,7 +349,7 @@ public:
             can_frame frame = {0};
             tpdo.send_sync(); // 发送SYNC触发PDO传输
 
-            // 接收并解析14个PDO帧(7个电机×2种PDO)，为了保险，多接受一些
+            // 接收并解析14个PDO帧(7个电机×2种PDO)，为了保险，增加超时，默认5，这里10
             for (int i = 0; i < 14; i++)
             {
                 std::lock_guard<std::mutex> lock(tpdo.data_mutex_);
@@ -349,8 +363,8 @@ public:
             // 输出状态
             tpdo.print_out();
 
-            // 发布状态
-            joint_state.header.stamp = ros::Time::now();
+            // 发布状态     
+            joint_state.name = joint_names;       
             for (int i = 0; i < UNITS; i++)
             {
                 std::lock_guard<std::mutex> lock(tpdo.data_mutex_);
@@ -358,6 +372,7 @@ public:
                 joint_state.velocity[i] = tpdo.velocity[i] / 180 * PI;
                 joint_state.effort[i] = tpdo.effort[i];
             }
+            joint_state.header.stamp = ros::Time::now();            
             joint_state_pub.publish(joint_state);
             rate.sleep(); // 保持频率
         }
@@ -378,9 +393,8 @@ public:
             {
                 need_subscribe = false; // 暂时无需订阅
                 sub = nh.subscribe("target_array", 10, &Server::arrayCallback1, this);
-                
             }
-            ros::spinOnce();//触发回调
+            ros::spinOnce(); // 触发回调
 
             // 处理新数据，控制电机
             if (new_data_received_)
@@ -426,7 +440,8 @@ public:
     // 析构函数
     ~Server()
     {
-        stop(); // 析构时确保线程停止
+        stop();                    // 析构时确保线程停止
+        tpdo.disable_all_motors(); // 析构时下使能所有电机
     }
 };
 
